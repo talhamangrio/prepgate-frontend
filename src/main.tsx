@@ -10,1223 +10,29 @@ const API = 'https://prepgate-backend.vercel.app';
 // ==========================================
 let currentUser: any = null;
 let currentToken: string | null = localStorage.getItem('pg_token');
-let currentTest: any = null;            // the Test document selected by the user
-let activeSubjectFilter: string = 'All'; // 'All' | 'Math' | 'MDCAT' | 'ECAT'
+let currentTest: any = null;
+let activeSubjectFilter: string = 'All';
 let questions: any[] = [];
 let currentQuestionIndex = 0;
 let userAnswers: Record<string, string> = {};
 let examTimer: any = null;
-let remainingTime = 3000;                // seconds; seeded from Test.durationSec
-let examStartedAt: string | null = null; // ISO string sent to backend on submit
+let remainingTime = 3000;
+let examStartedAt: string | null = null;
 let lastResult: any = null;
-let lastRankingTestId: string | null = null; // for "View Ranking" from results page
+let lastRankingTestId: string | null = null;
+let allTests: any[] = [];
+let authMode: 'login' | 'register' = 'login';
+let countdownTimer: any = null;
 
 // ==========================================
-// THEME TOGGLE
+// UTILITIES
 // ==========================================
-const themeBtn = document.getElementById('theme-toggle');
-const root = document.documentElement;
-themeBtn?.addEventListener('click', () => {
-  themeBtn.classList.toggle('dark-on');
-  if (root.getAttribute('data-theme') === 'dark') {
-    root.removeAttribute('data-theme');
-  } else {
-    root.setAttribute('data-theme', 'dark');
-  }
-});
+const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
+  document.getElementById(id) as T | null;
 
-// ==========================================
-// ROUTER
-// ==========================================
-let currentViewId = 'view-0';
-let isTransitioning = false;
-let viewStack: string[] = ['view-0'];
+const $$ = <T extends HTMLElement = HTMLElement>(sel: string): T[] =>
+  Array.from(document.querySelectorAll<T>(sel));
 
-window.navigateBack = () => {
-  if (viewStack.length > 1) {
-    viewStack.pop();
-    const target = viewStack[viewStack.length - 1];
-    window.navigateTo(target, false);
-  } else {
-    window.navigateTo('view-1', false);
-  }
-};
-
-window.navigateTo = (targetId: string, pushState = true) => {
-  if (currentViewId === targetId || isTransitioning) return;
-  const currentView = document.getElementById(currentViewId);
-  const targetView = document.getElementById(targetId);
-  if (!currentView || !targetView) return;
-  isTransitioning = true;
-  if (pushState) viewStack.push(targetId);
-  currentView.style.opacity = '0';
-  currentView.style.display = 'none';
-  currentView.classList.remove('active-flex', 'active-block', 'visible');
-  const displayType = targetView.getAttribute('data-display') || 'flex';
-  targetView.style.opacity = '0';
-  targetView.style.display = displayType;
-  targetView.classList.add(`active-${displayType}`);
-  void targetView.offsetWidth;
-  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-  document.documentElement.scrollTop = 0;
-  document.body.scrollTop = 0;
-  targetView.style.opacity = '1';
-  targetView.classList.add('visible');
-  currentViewId = targetId;
-  onViewRendered(targetId);
-  setTimeout(() => { isTransitioning = false; }, 400);
-};
-
-function onViewRendered(viewId: string) {
-  if (viewId === 'view-1') loadDashboard();
-  if (viewId === 'view-2') loadTestsList();
-  if (viewId === 'view-3') loadTestDetail();
-  if (viewId === 'view-5') showResults();
-  if (viewId === 'view-7') loadProfile();
-  if (viewId === 'view-8') loadTestRanking();
-  if (viewId === 'view-6') loadAnnouncements();
-  triggerMathRender();
-}
-
-function triggerMathRender() {
-  if (typeof (window as any).renderMathInElement === 'function') {
-    try {
-      (window as any).renderMathInElement(document.body, {
-        delimiters: [
-          { left: '$$', right: '$$', display: true },
-          { left: '$', right: '$', display: false },
-        ]
-      });
-    } catch (e) { console.warn('KaTeX skipped', e); }
-  }
-}
-
-window.playSound = (type: string) => {
-  console.log(`🎵 Sound: [${type}]`);
-};
-
-// ==========================================
-// AUTH
-// ==========================================
-window.login = async () => {
-  const email = (document.getElementById('login-email') as HTMLInputElement).value;
-  const password = (document.getElementById('login-password') as HTMLInputElement).value;
-  const errEl = document.getElementById('login-error');
-  errEl!.style.display = 'none';
-  try {
-    const res = await fetch(`${API}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      currentToken = data.token;
-      currentUser = data.user;
-      localStorage.setItem('pg_token', data.token);
-      localStorage.setItem('pg_user', JSON.stringify(data.user));
-      window.navigateTo('view-1');
-    } else {
-      errEl!.style.display = 'block';
-      errEl!.innerText = data.message || 'Invalid credentials';
-    }
-  } catch (e) {
-    errEl!.style.display = 'block';
-    errEl!.innerText = 'Server error. Try again.';
-  }
-};
-
-window.register = async () => {
-  const name = (document.getElementById('reg-name') as HTMLInputElement).value;
-  const email = (document.getElementById('reg-email') as HTMLInputElement).value;
-  const password = (document.getElementById('reg-password') as HTMLInputElement).value;
-  const errEl = document.getElementById('reg-error');
-  errEl!.style.display = 'none';
-  try {
-    const res = await fetch(`${API}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      currentToken = data.token;
-      currentUser = data.user;
-      localStorage.setItem('pg_token', data.token);
-      localStorage.setItem('pg_user', JSON.stringify(data.user));
-      window.navigateTo('view-1');
-    } else {
-      errEl!.style.display = 'block';
-      errEl!.innerText = data.message || 'Registration failed';
-    }
-  } catch (e) {
-    errEl!.style.display = 'block';
-    errEl!.innerText = 'Server error. Try again.';
-  }
-};
-
-window.showRegister = () => {
-  document.getElementById('login-box')!.style.display = 'none';
-  document.getElementById('register-box')!.style.display = 'block';
-};
-
-window.showLogin = () => {
-  document.getElementById('register-box')!.style.display = 'none';
-  document.getElementById('login-box')!.style.display = 'block';
-};
-
-window.logout = () => {
-  localStorage.removeItem('pg_token');
-  localStorage.removeItem('pg_user');
-  currentToken = null;
-  currentUser = null;
-  window.navigateTo('view-0');
-};
-
-// Auto-login if token exists
-if (currentToken) {
-  const savedUser = localStorage.getItem('pg_user');
-  if (savedUser) {
-    currentUser = JSON.parse(savedUser);
-    window.navigateTo('view-1');
-  }
-}
-
-// ==========================================
-// DASHBOARD
-// ==========================================
-function loadDashboard() {
-  if (!currentUser) return;
-  const nameEl = document.getElementById('dashboard-name');
-  if (nameEl) nameEl.innerText = `Welcome Back, ${currentUser.name.split(' ')[0]}.`;
-}
-
-// ==========================================
-// TESTS LIST
-// ==========================================
-const SUBJECTS = ['Math', 'MDCAT', 'ECAT'] as const;
-const SUBJECT_COLORS: Record<string, string> = {
-  Math: '#3b82f6',
-  MDCAT: '#10b981',
-  ECAT: '#f59e0b',
-};
-
-async function loadTestsList() {
-  // Render filter pills once
-  renderSubjectPills();
-  await fetchAndRenderTests();
-}
-
-function renderSubjectPills() {
-  const container = document.getElementById('subject-filter-pills');
-  if (!container) return;
-  const pills = ['All', ...SUBJECTS];
-  container.innerHTML = pills.map(s => {
-    const isActive = s === activeSubjectFilter;
-    const color = s === 'All' ? '' : `border-color:${SUBJECT_COLORS[s]};color:${SUBJECT_COLORS[s]};`;
-    return `<button class="nav-pill spring-hover ${isActive ? 'pill-primary' : 'glass-panel'}"
-      style="cursor:pointer;font-size:0.9rem;padding:0.45rem 1.1rem;${isActive ? '' : color}"
-      onclick="window.filterTests('${s}')">${s}</button>`;
-  }).join('');
-}
-
-window.filterTests = (subject: string) => {
-  activeSubjectFilter = subject;
-  renderSubjectPills();
-  fetchAndRenderTests();
-};
-
-async function fetchAndRenderTests() {
-  const grid = document.getElementById('tests-grid');
-  if (!grid) return;
-  grid.innerHTML = `<p style="color:var(--text-muted);text-align:center;grid-column:1/-1;">Loading tests...</p>`;
-
-  try {
-    const url = activeSubjectFilter === 'All'
-      ? `${API}/api/exam/tests`
-      : `${API}/api/exam/tests?subject=${encodeURIComponent(activeSubjectFilter)}`;
-    const res = await fetch(url);
-    const tests = await res.json();
-
-    if (!tests.length) {
-      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--text-muted);">
-        <p>No tests available${activeSubjectFilter !== 'All' ? ` for ${activeSubjectFilter}` : ''} yet.</p>
-        <p style="font-size:0.85rem;margin-top:0.5rem;">Please check back later or contact the admin.</p>
-      </div>`;
-      return;
-    }
-
-    grid.innerHTML = tests.map((t: any) => {
-      const color = SUBJECT_COLORS[t.subject] || '#888';
-      const durationMin = Math.round(t.durationSec / 60);
-      return `<div class="level-card glass-panel spring-hover unlocked"
-        style="cursor:pointer;border-top:4px solid ${color};"
-        onclick="window.openTestDetail('${t._id}')">
-        <div style="display:inline-block;padding:0.3rem 0.8rem;border-radius:999px;font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;background:${color};color:white;margin-bottom:0.75rem;">${t.subject}</div>
-        <h3 style="margin:0 0 0.5rem;font-size:1.3rem;">${escapeHtml(t.name)}</h3>
-        <p style="margin:0;color:var(--text-muted);font-size:0.9rem;">${t.totalQuestions || 0} questions · ${durationMin} min</p>
-      </div>`;
-    }).join('');
-  } catch (e) {
-    grid.innerHTML = `<p style="color:#e74c3c;text-align:center;grid-column:1/-1;">Failed to load tests. Please try again.</p>`;
-  }
-}
-
-window.openTestDetail = (testId: string) => {
-  currentTest = { _id: testId };
-  window.navigateTo('view-3');
-};
-
-// ==========================================
-// TEST DETAIL
-// ==========================================
-async function loadTestDetail() {
-  if (!currentTest?._id) {
-    window.navigateTo('view-2');
-    return;
-  }
-  try {
-    // Fetch test metadata + check for an in-progress session in parallel
-    const [testRes, sessionRes] = await Promise.all([
-      fetch(`${API}/api/exam/tests/${currentTest._id}`),
-      currentToken
-        ? fetch(`${API}/api/exam/session/${currentTest._id}`, {
-          headers: { 'Authorization': `Bearer ${currentToken}` }
-        }).catch(() => null)
-        : Promise.resolve(null)
-    ]);
-
-    const test = await testRes.json();
-    currentTest = test;
-
-    document.getElementById('test-detail-subject')!.innerText = test.subject || '';
-    document.getElementById('test-detail-name')!.innerText = test.name || 'Test';
-    document.getElementById('test-detail-duration')!.innerText = `${Math.round(test.durationSec / 60)} min`;
-    document.getElementById('test-detail-questions')!.innerText = String(test.totalQuestions || 0);
-
-    // Attempt count (from ranking endpoint — public)
-    try {
-      const rankRes = await fetch(`${API}/api/exam/tests/${test._id}/ranking`);
-      const rankData = await rankRes.json();
-      document.getElementById('test-detail-attempts')!.innerText = String(rankData.ranking?.length || 0);
-    } catch {
-      document.getElementById('test-detail-attempts')!.innerText = '0';
-    }
-
-    // Resume-note visibility
-    const noteEl = document.getElementById('test-detail-resume-note');
-    if (noteEl) {
-      let hasSession = false;
-      if (sessionRes && (sessionRes as any).ok) {
-        const session = await (sessionRes as any).json();
-        hasSession = !!(session && session._id);
-      }
-      noteEl.style.display = hasSession ? 'block' : 'none';
-    }
-  } catch (e) {
-    alert('Could not load test details. Please try again.');
-    window.navigateTo('view-2');
-  }
-}
-
-window.startTestFromDetail = async () => {
-  if (!currentTest?._id) return;
-  // Check for an existing in-progress session
-  try {
-    const res = await fetch(`${API}/api/exam/session/${currentTest._id}`, {
-      headers: { 'Authorization': `Bearer ${currentToken}` }
-    });
-    const session = await res.json();
-    if (session && session._id) {
-      window.showResumeModal();
-      return;
-    }
-  } catch (e) { /* fall through to fresh start */ }
-  startFreshExam();
-};
-
-window.viewTestRanking = () => {
-  if (!currentTest?._id) return;
-  lastRankingTestId = currentTest._id;
-  window.navigateTo('view-8');
-};
-
-// ==========================================
-// EXAM ENGINE
-// ==========================================
-async function startFreshExam() {
-  if (!currentTest?._id) return;
-  currentQuestionIndex = 0;
-  userAnswers = {};
-
-  try {
-    const res = await fetch(`${API}/api/exam/tests/${currentTest._id}/questions`, {
-      headers: { 'Authorization': `Bearer ${currentToken}` }
-    });
-    const data = await res.json();
-    questions = data.questions || [];
-    if (!questions.length) {
-      alert('No questions found for this test. Please contact admin.');
-      return;
-    }
-    // Seed timer from the Test document, fall back to 3000s.
-    remainingTime = data.test?.durationSec || currentTest.durationSec || 3000;
-    examStartedAt = new Date().toISOString();
-    startTimer();
-    window.navigateTo('view-4');
-    renderQuestion();
-  } catch (e) {
-    alert('Error loading questions. Try again.');
-  }
-}
-
-async function resumeExam() {
-  if (!currentTest?._id) return;
-  try {
-    const [qRes, sRes] = await Promise.all([
-      fetch(`${API}/api/exam/tests/${currentTest._id}/questions`, {
-        headers: { 'Authorization': `Bearer ${currentToken}` }
-      }),
-      fetch(`${API}/api/exam/session/${currentTest._id}`, {
-        headers: { 'Authorization': `Bearer ${currentToken}` }
-      })
-    ]);
-    const qData = await qRes.json();
-    questions = qData.questions || [];
-    const session = await sRes.json();
-    if (session) {
-      currentQuestionIndex = session.currentIndex || 0;
-      userAnswers = session.answers || {};
-      remainingTime = session.remainingTime || qData.test?.durationSec || 3000;
-      examStartedAt = session.startedAt || new Date().toISOString();
-    }
-    startTimer();
-    window.navigateTo('view-4');
-    renderQuestion();
-  } catch (e) {
-    startFreshExam();
-  }
-}
-
-function startTimer() {
-  clearInterval(examTimer);
-  updateTimerDisplay();
-  examTimer = setInterval(() => {
-    remainingTime--;
-    updateTimerDisplay();
-    if (remainingTime <= 0) {
-      clearInterval(examTimer);
-      submitExam();
-    }
-    if (remainingTime % 30 === 0) autoSaveSession();
-  }, 1000);
-}
-
-function updateTimerDisplay() {
-  const mins = Math.floor(remainingTime / 60).toString().padStart(2, '0');
-  const secs = (remainingTime % 60).toString().padStart(2, '0');
-  const el = document.getElementById('countdown');
-  if (el) el.innerText = `${mins}:${secs}`;
-}
-
-async function autoSaveSession() {
-  if (!currentToken || !currentTest?._id) return;
-  try {
-    await fetch(`${API}/api/exam/session/save`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentToken}` },
-      body: JSON.stringify({
-        testId: currentTest._id,
-        currentIndex: currentQuestionIndex,
-        answers: userAnswers,
-        remainingTime,
-        startedAt: examStartedAt
-      })
-    });
-  } catch (e) { }
-}
-
-function renderQuestion() {
-  if (!questions.length) return;
-  const q = questions[currentQuestionIndex];
-  const total = questions.length;
-  const answered = userAnswers[q._id];
-
-  // Progress
-  const progEl = document.getElementById('exam-progress-text');
-  if (progEl) progEl.innerText = `Question ${currentQuestionIndex + 1} / ${total}`;
-
-  // Tabs (subject + test name)
-  const tabsEl = document.getElementById('exam-tabs');
-  if (tabsEl && currentTest) {
-    tabsEl.innerHTML = `<div class="tab active">${escapeHtml(currentTest.subject || '')} — ${escapeHtml(currentTest.name || '')}</div>`;
-  }
-
-  // Passage panel (optional)
-  const passagePanel = document.getElementById('exam-passage-panel') as HTMLElement;
-  const passageText = document.getElementById('passage-text');
-  if (passagePanel && passageText) {
-    if (q.passage && q.passage.trim()) {
-      passageText.innerHTML = escapeHtml(q.passage);
-      passagePanel.style.display = 'block';
-    } else {
-      passagePanel.style.display = 'none';
-    }
-  }
-
-  // Buttons
-  const btnNext = document.getElementById('btn-next-question') as HTMLButtonElement;
-  const btnPrev = document.getElementById('btn-prev-question') as HTMLButtonElement;
-  if (btnPrev) btnPrev.style.visibility = currentQuestionIndex > 0 ? 'visible' : 'hidden';
-  if (btnNext) {
-    btnNext.innerText = currentQuestionIndex === total - 1 ? 'Submit Exam' : 'Next';
-  }
-
-  // Question & Options
-  const container = document.getElementById('quiz-question-container')!;
-  const letters = ['A', 'B', 'C', 'D'];
-  const opts = [q.options.A, q.options.B, q.options.C, q.options.D];
-
-  let optionsHtml = opts.map((opt: string, idx: number) => {
-    const letter = letters[idx];
-    let extraClass = '';
-    if (answered) {
-      if (letter === q.correct) extraClass = 'correct'; // always green the right answer
-      else if (letter === answered) extraClass = 'wrong'; // red only if user picked wrong
-    }
-    const disabled = answered ? 'style="pointer-events:none;"' : '';
-    return `<button class="option-btn spring-hover ${extraClass}"
-      onclick="window.selectAnswer(this, '${letter}')" ${disabled}>
-      <span class="opt-letter">${letter}</span>
-      <span class="opt-text">${escapeHtml(opt)}</span>
-    </button>`;
-  }).join('');
-
-  container.innerHTML = `
-    <h3 class="question-text">${escapeHtml(q.question)}</h3>
-    ${q.explanation && answered ? `<div class="glass-panel" style="padding:1rem;margin-top:1rem;font-size:0.9rem;color:var(--text-muted);"><strong>Explanation:</strong> ${escapeHtml(q.explanation)}</div>` : ''}
-    <div class="options-container">${optionsHtml}</div>
-  `;
-
-  triggerMathRender();
-}
-
-window.selectAnswer = (button: HTMLElement, letter: string) => {
-  const q = questions[currentQuestionIndex];
-  if (userAnswers[q._id]) return;
-  userAnswers[q._id] = letter;
-  if (letter === q.correct) {
-    window.playSound('correct');
-  } else {
-    window.playSound('wrong');
-  }
-  renderQuestion();
-};
-
-window.nextQuestion = () => {
-  if (currentQuestionIndex < questions.length - 1) {
-    currentQuestionIndex++;
-    renderQuestion();
-  } else {
-    submitExam();
-  }
-};
-
-window.previousQuestion = () => {
-  if (currentQuestionIndex > 0) {
-    currentQuestionIndex--;
-    renderQuestion();
-  }
-};
-
-async function submitExam() {
-  clearInterval(examTimer);
-  await autoSaveSession();
-
-  try {
-    const res = await fetch(`${API}/api/exam/submit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentToken}` },
-      body: JSON.stringify({
-        testId: currentTest?._id,
-        answers: userAnswers,
-        startedAt: examStartedAt
-      })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      lastResult = data;
-      lastRankingTestId = currentTest?._id;
-      window.navigateTo('view-5');
-    } else {
-      alert(data.message || 'Submit error');
-    }
-  } catch (e) {
-    alert('Network error during submit');
-  }
-}
-
-// ==========================================
-// RESUME MODAL
-// ==========================================
-window.showResumeModal = () => {
-  const modal = document.getElementById('resume-modal');
-  if (!modal) return;
-  modal.classList.add('active');
-  setTimeout(() => modal.classList.add('visible'), 10);
-};
-
-window.hideResumeModal = () => {
-  const modal = document.getElementById('resume-modal');
-  if (!modal) return;
-  modal.classList.remove('visible');
-  setTimeout(() => modal.classList.remove('active'), 300);
-};
-
-window.acceptResumeModal = () => {
-  window.hideResumeModal();
-  resumeExam();
-};
-
-window.restartExam = async () => {
-  window.hideResumeModal();
-  if (!currentTest?._id) return;
-  try {
-    await fetch(`${API}/api/exam/session/${currentTest._id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${currentToken}` }
-    });
-  } catch (e) { }
-  startFreshExam();
-};
-
-window.quitExam = () => {
-  window.confirmAction(
-    '⚠️ Quit Test?\n\nYour progress will be SAVED. You can resume later from where you left off.',
-    async () => {
-      await autoSaveSession();
-      clearInterval(examTimer);
-      viewStack = viewStack.filter(v => v !== 'view-4');
-      window.navigateTo('view-3');
-    },
-    'Save & Quit',
-    'Continue Test'
-  );
-};
-
-// ==========================================
-// RESULTS
-// ==========================================
-function showResults() {
-  if (!lastResult) return;
-  const { correctCount, totalQuestions, percentage, timeTakenSeconds, test } = lastResult;
-
-  const nameEl = document.getElementById('results-test-name');
-  if (nameEl) nameEl.innerText = test?.name ? `${test.subject} — ${test.name}` : 'Test';
-
-  const correctEl = document.getElementById('results-correct');
-  if (correctEl) correctEl.innerText = `${correctCount}/${totalQuestions}`;
-
-  const timeEl = document.getElementById('results-time');
-  if (timeEl) {
-    timeEl.innerText = timeTakenSeconds != null ? formatDuration(timeTakenSeconds) : '—';
-  }
-
-  const scoreEl = document.getElementById('score-number');
-  const circleProgress = document.querySelector('.circle-progress');
-  if (circleProgress) {
-    setTimeout(() => {
-      circleProgress.setAttribute('stroke-dasharray', `${percentage}, 100`);
-    }, 100);
-  }
-  if (scoreEl) {
-    let cur = 0;
-    const interval = setInterval(() => {
-      cur++;
-      scoreEl.innerText = cur.toString();
-      if (cur >= percentage) clearInterval(interval);
-    }, 20);
-  }
-
-  // Fetch this user's rank on the test
-  fetchMyResultRank();
-}
-
-async function fetchMyResultRank() {
-  const testId = lastResult?.test?._id || lastRankingTestId;
-  if (!testId) return;
-  const rankEl = document.getElementById('my-result-rank');
-  const shiftEl = document.getElementById('shift-label');
-  try {
-    const res = await fetch(`${API}/api/exam/tests/${testId}/ranking`);
-    const data = await res.json();
-    const myId = currentUser?.id || currentUser?._id;
-    const idx = data.ranking.findIndex((r: any) => String(r.userId) === String(myId));
-    if (rankEl) rankEl.innerText = idx >= 0 ? `#${idx + 1}` : '#--';
-    if (shiftEl && idx >= 0) {
-      const total = data.ranking.length;
-      shiftEl.innerText = `out of ${total} attempt${total !== 1 ? 's' : ''}`;
-    }
-  } catch (e) {
-    if (rankEl) rankEl.innerText = '#--';
-  }
-}
-
-// ==========================================
-// PROFILE
-// ==========================================
-async function loadProfile() {
-  if (!currentToken) return;
-  try {
-    const res = await fetch(`${API}/api/exam/profile`, {
-      headers: { 'Authorization': `Bearer ${currentToken}` }
-    });
-    const data = await res.json();
-    const user = data.user;
-    const attempts = data.attempts || [];
-
-    const nameEl = document.getElementById('profile-name');
-    const avatarEl = document.getElementById('profile-avatar');
-    const summaryEl = document.getElementById('profile-summary');
-    const histEl = document.getElementById('attempt-history');
-
-    if (nameEl) nameEl.innerText = user.name;
-    if (avatarEl) avatarEl.innerText = user.name.substring(0, 2).toUpperCase();
-    if (summaryEl) summaryEl.innerText = `${attempts.length} attempt${attempts.length !== 1 ? 's' : ''}`;
-
-    if (histEl) {
-      if (!attempts.length) {
-        histEl.innerHTML = '<li>No attempts yet. Take a test from the Tests page.</li>';
-      } else {
-        histEl.innerHTML = attempts.map((a: any) => {
-          const testName = a.test?.name || 'Unknown test';
-          const subject = a.test?.subject || '';
-          const pct = a.percentage ?? 0;
-          const correct = a.correctCount ?? 0;
-          const total = a.totalQuestions ?? 0;
-          const date = a.submittedAt || a.completedAt;
-          const dateStr = date ? new Date(date).toLocaleDateString() : '';
-          const status = pct >= 60 ? 'pass' : 'fail';
-          const statusLabel = pct >= 60 ? 'Passed' : 'Failed';
-          const timeStr = a.timeTakenSeconds != null ? ` · ${formatDuration(a.timeTakenSeconds)}` : '';
-          return `<li>
-            <span class="status ${status}">${statusLabel}</span>
-            ${escapeHtml(subject ? `${subject} — ` : '')}${escapeHtml(testName)} — ${correct}/${total} (${pct}%)${timeStr}
-            <small style="display:block;margin-top:0.25rem;color:var(--text-muted);">${dateStr}</small>
-          </li>`;
-        }).join('');
-      }
-    }
-  } catch (e) { }
-}
-
-// ==========================================
-// PER-TEST RANKING
-// ==========================================
-async function loadTestRanking() {
-  const testId = lastRankingTestId || currentTest?._id;
-  if (!testId) {
-    window.navigateTo('view-2');
-    return;
-  }
-
-  const nameEl = document.getElementById('ranking-test-name');
-  const subjectEl = document.getElementById('ranking-test-subject');
-  const top3El = document.getElementById('leaderboard-top3');
-  const listEl = document.getElementById('leaderboard-list');
-  const myRankEl = document.getElementById('my-rank-display');
-  const emptyEl = document.getElementById('ranking-empty');
-
-  if (top3El) top3El.innerHTML = '';
-  if (listEl) listEl.innerHTML = '';
-  if (myRankEl) myRankEl.innerText = '#--';
-  if (emptyEl) emptyEl.style.display = 'none';
-
-  try {
-    const res = await fetch(`${API}/api/exam/tests/${testId}/ranking`);
-    const data = await res.json();
-    const test = data.test || {};
-    const ranking: any[] = data.ranking || [];
-
-    if (nameEl) nameEl.innerText = test.name || 'Ranking';
-    if (subjectEl) subjectEl.innerText = test.subject || '';
-
-    if (!ranking.length) {
-      if (emptyEl) emptyEl.style.display = 'block';
-      return;
-    }
-
-    const myId = currentUser?.id || currentUser?._id;
-    const myRankIdx = myId ? ranking.findIndex(r => String(r.userId) === String(myId)) : -1;
-    if (myRankEl) myRankEl.innerText = myRankIdx >= 0 ? `#${myRankIdx + 1}` : 'N/A';
-
-    // Top 3 — visual: 2nd left, 1st center (bigger), 3rd right
-    const top3 = ranking.slice(0, 3);
-    if (top3El) {
-      const displayOrder = [
-        { dataIdx: 1, glow: 'glow-silver', rank: 'silver', num: '2', big: false },
-        { dataIdx: 0, glow: 'glow-gold',   rank: 'gold',   num: '1', big: true  },
-        { dataIdx: 2, glow: 'glow-bronze', rank: 'bronze', num: '3', big: false },
-      ];
-      top3El.innerHTML = displayOrder.map(({ dataIdx, glow, rank, num, big }) => {
-        const u = top3[dataIdx];
-        if (!u) return '';
-        const isYou = myId && String(u.userId) === String(myId);
-        const score = `${u.correctCount}/${u.totalQuestions}`;
-        const time = u.timeTakenSeconds != null ? ` · ${formatDuration(u.timeTakenSeconds)}` : '';
-        return `<div class="lb-item glass-panel ${glow} ${big ? 'lb-first' : ''}">
-          <div class="lb-rank ${rank}">${num}</div>
-          <div class="lb-info">
-            <h4>${escapeHtml(u.name)}${isYou ? ' (You)' : ''}</h4>
-            <p>${score}${time}</p>
-          </div>
-        </div>`;
-      }).join('');
-    }
-
-    // Remaining rows
-    if (listEl) {
-      listEl.innerHTML = ranking.slice(3).map((u, idx) => {
-        const rank = idx + 4;
-        const isYou = myId && String(u.userId) === String(myId);
-        const time = u.timeTakenSeconds != null ? ` · ${formatDuration(u.timeTakenSeconds)}` : '';
-        return `<div class="lb-row glass-panel spring-hover ${isYou ? 'my-row' : ''}">
-          <div class="row-rank" style="${isYou ? 'color:#d4af37' : ''}">${rank}</div>
-          <div class="row-name">${escapeHtml(u.name)}${isYou ? ' (You)' : ''}</div>
-          <div class="row-score">${u.correctCount}/${u.totalQuestions}${time}</div>
-        </div>`;
-      }).join('');
-    }
-  } catch (e) {
-    if (emptyEl) {
-      emptyEl.style.display = 'block';
-      emptyEl.innerText = 'Failed to load ranking. Please try again.';
-    }
-  }
-}
-
-// ==========================================
-// ANNOUNCEMENTS
-// ==========================================
-async function loadAnnouncements() {
-  try {
-    const res = await fetch(`${API}/api/exam/announcements`);
-    const data = await res.json();
-    const listEl = document.getElementById('announcement-list');
-    if (listEl) {
-      listEl.innerHTML = data.length ? data.map((a: any) => `
-        <div class="glass-panel ann-card spring-hover">
-          <div class="ann-img-placeholder">${a.emoji || '📢'}</div>
-          <div class="ann-content">
-            <h4>${escapeHtml(a.title)}</h4>
-            <p>${escapeHtml(a.description)}</p>
-            <small>${new Date(a.createdAt).toLocaleDateString()}</small>
-          </div>
-        </div>
-      `).join('') : '<p style="color:var(--text-muted);text-align:center;padding:2rem;">No announcements yet.</p>';
-    }
-  } catch (e) { }
-}
-
-// ==========================================
-// ADMIN PORTAL
-// ==========================================
-const ADMIN_KEY = 'pg_admin_token';
-let adminToken: string | null = localStorage.getItem(ADMIN_KEY);
-
-window.adminLogin = async () => {
-  const email = (document.getElementById('admin-email') as HTMLInputElement).value;
-  const password = (document.getElementById('admin-password') as HTMLInputElement).value;
-  const errEl = document.getElementById('admin-error');
-  errEl!.style.display = 'none';
-  try {
-    const res = await fetch(`${API}/api/admin/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      adminToken = data.token;
-      localStorage.setItem(ADMIN_KEY, data.token);
-      window.navigateTo('view-admin-panel');
-      loadAdminData();
-    } else {
-      errEl!.style.display = 'block';
-      errEl!.innerText = data.message || 'Invalid admin credentials';
-    }
-  } catch (e) {
-    errEl!.style.display = 'block';
-    errEl!.innerText = 'Server error';
-  }
-};
-
-window.switchAdminTab = (tabId: string) => {
-  document.querySelectorAll('.admin-nav-item').forEach(el => el.classList.remove('active'));
-  document.querySelector(`[onclick="window.switchAdminTab('${tabId}')"]`)?.classList.add('active');
-  document.querySelectorAll('.admin-tab-content').forEach(el => el.classList.remove('active'));
-  document.getElementById(`admin-tab-${tabId}`)?.classList.add('active');
-  // Lazy-load tab data when activated
-  if (tabId === 'tests') loadAdminTests();
-  if (tabId === 'users') loadAdminUsers();
-  if (tabId === 'announcements') loadAdminAnnouncements();
-  if (tabId === 'dashboard') loadAdminStats();
-};
-
-async function loadAdminData() {
-  loadAdminStats();
-  loadAdminTests();
-  loadAdminUsers();
-  loadAdminAnnouncements();
-}
-
-async function loadAdminStats() {
-  try {
-    const res = await fetch(`${API}/api/admin/stats`, { headers: { 'Authorization': `Bearer ${adminToken}` } });
-    const data = await res.json();
-    document.getElementById('stat-users')!.innerText = String(data.totalUsers || 0);
-    document.getElementById('stat-tests')!.innerText = String(data.totalTests || 0);
-    document.getElementById('stat-attempts')!.innerText = String(data.totalAttempts || 0);
-    document.getElementById('stat-questions')!.innerText = String(data.totalQuestions || 0);
-  } catch (e) { }
-}
-
-// Populate a <select> with the subject list (or fetch from /admin/subjects)
-async function fetchSubjects(): Promise<string[]> {
-  try {
-    const res = await fetch(`${API}/api/admin/subjects`, { headers: { 'Authorization': `Bearer ${adminToken}` } });
-    const data = await res.json();
-    return data.subjects || [...SUBJECTS];
-  } catch {
-    return [...SUBJECTS];
-  }
-}
-
-async function loadAdminTests() {
-  const tbody = document.getElementById('admin-tests-tbody')!;
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Loading...</td></tr>';
-
-  try {
-    const [testsRes, subjects] = await Promise.all([
-      fetch(`${API}/api/admin/tests`, { headers: { 'Authorization': `Bearer ${adminToken}` } }),
-      fetchSubjects()
-    ]);
-    const tests = await testsRes.json();
-
-    // Populate the upload + download dropdowns and create-test subject select
-    const uploadSelect = document.getElementById('admin-upload-test') as HTMLSelectElement | null;
-    const downloadSelect = document.getElementById('admin-download-test') as HTMLSelectElement | null;
-    const createSelect = document.getElementById('admin-create-subject') as HTMLSelectElement | null;
-    const optsHtml = tests.length
-      ? tests.map((t: any) => `<option value="${t._id}">${escapeHtml(t.subject)} — ${escapeHtml(t.name)}</option>`).join('')
-      : `<option value="">(no tests yet)</option>`;
-    if (uploadSelect) uploadSelect.innerHTML = optsHtml;
-    if (downloadSelect) downloadSelect.innerHTML = optsHtml;
-    if (createSelect) {
-      createSelect.innerHTML = subjects.map((s: string) => `<option value="${s}">${s}</option>`).join('');
-    }
-
-    if (!tests.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No tests yet. Create one below.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = tests.map((t: any) => {
-      const durationMin = Math.round(t.durationSec / 60);
-      const status = t.active
-        ? `<span style="color:#2ecc71;font-weight:700;">Active</span>`
-        : `<span style="color:var(--text-muted);font-weight:700;">Hidden</span>`;
-      return `<tr>
-        <td><strong>${escapeHtml(t.name)}</strong></td>
-        <td>${escapeHtml(t.subject)}</td>
-        <td>${durationMin} min</td>
-        <td>${t.totalQuestions || 0}</td>
-        <td>${status}</td>
-        <td style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-          <button class="action-btn" onclick="window.toggleTestActive('${t._id}', ${!t.active})" style="background:#3b82f6;color:white;">
-            ${t.active ? 'Hide' : 'Show'}
-          </button>
-          <button class="action-btn" onclick="window.editTestDuration('${t._id}', ${t.durationSec})" style="background:#f39c12;color:white;">
-            Duration
-          </button>
-          <button class="action-btn delete" onclick="window.deleteTest('${t._id}', '${escapeHtml(t.name).replace(/'/g, "\\'")}')">
-            Delete
-          </button>
-        </td>
-      </tr>`;
-    }).join('');
-  } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Error loading tests</td></tr>';
-  }
-}
-
-window.createTest = async (form: HTMLFormElement) => {
-  const formData = new FormData(form);
-  const payload = Object.fromEntries(formData.entries());
-  const statusEl = document.getElementById('create-test-status')!;
-  statusEl.style.display = 'block';
-  statusEl.style.color = 'var(--text-muted)';
-  statusEl.innerText = 'Creating...';
-
-  try {
-    const res = await fetch(`${API}/api/admin/tests`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
-      body: JSON.stringify({ ...payload, durationSec: Number(payload.durationSec) })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      statusEl.style.color = '#2ecc71';
-      statusEl.innerText = `✅ Test '${data.name}' created.`;
-      form.reset();
-      loadAdminTests();
-      loadAdminStats();
-    } else {
-      statusEl.style.color = 'red';
-      statusEl.innerText = data.message || 'Create failed';
-    }
-  } catch (e) {
-    statusEl.style.color = 'red';
-    statusEl.innerText = 'Server error';
-  }
-};
-
-window.toggleTestActive = async (id: string, active: boolean) => {
-  try {
-    await fetch(`${API}/api/admin/tests/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
-      body: JSON.stringify({ active })
-    });
-    loadAdminTests();
-  } catch (e) { }
-};
-
-window.editTestDuration = (id: string, currentSec: number) => {
-  const input = prompt(`Enter new duration in seconds (current: ${currentSec} = ${Math.round(currentSec / 60)} min). Min 60.`, String(currentSec));
-  if (input === null) return;
-  const n = Number(input);
-  if (!Number.isFinite(n) || n < 60) {
-    alert('Duration must be a number >= 60 seconds.');
-    return;
-  }
-  window.updateTestDuration(id, n);
-};
-
-window.updateTestDuration = async (id: string, durationSec: number) => {
-  try {
-    await fetch(`${API}/api/admin/tests/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
-      body: JSON.stringify({ durationSec })
-    });
-    loadAdminTests();
-  } catch (e) { }
-};
-
-window.deleteTest = (id: string, name: string) => {
-  window.confirmAction(
-    `Delete test "${name}"?\n\nThis will permanently delete the test AND all its questions, attempts, and sessions. This cannot be undone.`,
-    async () => {
-      try {
-        await fetch(`${API}/api/admin/tests/${id}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${adminToken}` }
-        });
-        loadAdminTests();
-        loadAdminStats();
-      } catch (e) { }
-    }
-  );
-};
-
-window.loadCsvFile = (input: HTMLInputElement) => {
-  const file = input.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const ta = document.getElementById('admin-csv-textarea') as HTMLTextAreaElement | null;
-    if (ta) ta.value = String(reader.result || '');
-  };
-  reader.readAsText(file);
-};
-
-window.uploadCsv = async (form: HTMLFormElement) => {
-  const formData = new FormData(form);
-  const testId = formData.get('testId');
-  const csv = formData.get('csv') as string;
-  const statusEl = document.getElementById('upload-status')!;
-  statusEl.style.display = 'none';
-
-  if (!testId) {
-    statusEl.style.display = 'block';
-    statusEl.style.color = 'red';
-    statusEl.innerText = 'Please select a test first.';
-    return;
-  }
-  if (!csv || !csv.trim()) {
-    statusEl.style.display = 'block';
-    statusEl.style.color = 'red';
-    statusEl.innerText = 'CSV content is empty.';
-    return;
-  }
-
-  statusEl.style.display = 'block';
-  statusEl.style.color = 'var(--text-muted)';
-  statusEl.innerText = 'Uploading...';
-
-  try {
-    const res = await fetch(`${API}/api/admin/tests/${testId}/questions/bulk`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
-      body: JSON.stringify({ csv })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      statusEl.style.color = '#2ecc71';
-      statusEl.innerText = `✅ ${data.count} questions uploaded.`;
-      form.reset();
-      loadAdminTests();
-      loadAdminStats();
-    } else {
-      statusEl.style.color = 'red';
-      statusEl.innerText = data.message || 'Upload failed';
-    }
-  } catch (e) {
-    statusEl.style.color = 'red';
-    statusEl.innerText = 'Server error during upload';
-  }
-};
-
-window.downloadRankingsCsv = async () => {
-  const select = document.getElementById('admin-download-test') as HTMLSelectElement | null;
-  const testId = select?.value;
-  if (!testId) {
-    alert('Please select a test first.');
-    return;
-  }
-  try {
-    const res = await fetch(`${API}/api/admin/tests/${testId}/rankings.csv`, {
-      headers: { 'Authorization': `Bearer ${adminToken}` }
-    });
-    if (!res.ok) {
-      alert('Download failed.');
-      return;
-    }
-    const blob = await res.blob();
-    // Pull filename from Content-Disposition if present
-    const cd = res.headers.get('Content-Disposition') || '';
-    const m = cd.match(/filename="?([^";]+)"?/);
-    const filename = m ? m[1] : 'rankings.csv';
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  } catch (e) {
-    alert('Network error during download.');
-  }
-};
-
-async function loadAdminUsers() {
-  const tbody = document.getElementById('admin-users-tbody')!;
-  try {
-    const res = await fetch(`${API}/api/admin/users`, { headers: { 'Authorization': `Bearer ${adminToken}` } });
-    const data = await res.json();
-    tbody.innerHTML = data.map((u: any) => `
-      <tr>
-        <td>${escapeHtml(u.name)}</td>
-        <td>${escapeHtml(u.email)}</td>
-        <td>${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</td>
-        <td>${u.totalAttempts || 0}</td>
-        <td><button class="action-btn delete" onclick="window.deleteUser('${u._id}')">Delete</button></td>
-      </tr>
-    `).join('') || '<tr><td colspan="5" style="text-align:center">No users yet</td></tr>';
-  } catch (e) { }
-}
-
-async function loadAdminAnnouncements() {
-  const tbody = document.getElementById('admin-ann-tbody')!;
-  try {
-    const res = await fetch(`${API}/api/admin/announcements`, { headers: { 'Authorization': `Bearer ${adminToken}` } });
-    const data = await res.json();
-    tbody.innerHTML = data.map((a: any) => `
-      <tr>
-        <td>${new Date(a.createdAt).toLocaleDateString()}</td>
-        <td>${escapeHtml(a.title)}</td>
-        <td><button class="action-btn delete" onclick="window.deleteAnnouncement('${a._id}')">Delete</button></td>
-      </tr>
-    `).join('') || '<tr><td colspan="3" style="text-align:center">No announcements</td></tr>';
-  } catch (e) { }
-}
-
-window.submitAnnouncement = async (form: HTMLFormElement) => {
-  const formData = new FormData(form);
-  const payload = Object.fromEntries(formData.entries());
-  try {
-    await fetch(`${API}/api/admin/announcements`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
-      body: JSON.stringify(payload)
-    });
-    form.reset();
-    loadAdminAnnouncements();
-  } catch (e) { }
-};
-
-window.deleteUser = (id: string) => {
-  window.confirmAction('Are you sure you want to permanently delete this user (and all their attempts/sessions)?', async () => {
-    try {
-      await fetch(`${API}/api/admin/users/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${adminToken}` } });
-      loadAdminUsers();
-      loadAdminStats();
-    } catch (e) { }
-  });
-};
-
-window.deleteAnnouncement = (id: string) => {
-  window.confirmAction('Delete this announcement?', async () => {
-    try {
-      await fetch(`${API}/api/admin/announcements/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${adminToken}` } });
-      loadAdminAnnouncements();
-    } catch (e) { }
-  });
-};
-
-// Confirm Modal
-let pendingConfirmCallback: (() => void) | null = null;
-window.confirmAction = (message: string, callback: () => void, confirmLabel = 'Confirm Delete', cancelLabel = 'Cancel') => {
-  const modal = document.getElementById('custom-confirm-modal');
-  const msgEl = document.getElementById('confirm-modal-message');
-  const confirmBtn = document.getElementById('confirm-modal-btn')!;
-  const cancelBtn = document.getElementById('cancel-modal-btn')!;
-  if (!modal || !msgEl) return;
-  msgEl.innerText = message;
-  confirmBtn.innerText = confirmLabel;
-  cancelBtn.innerText = cancelLabel;
-  if (confirmLabel === 'Save & Quit') {
-    confirmBtn.style.background = '#e67e22';
-  } else {
-    confirmBtn.style.background = '#e74c3c';
-  }
-  pendingConfirmCallback = callback;
-  modal.classList.add('visible');
-  confirmBtn.onclick = () => {
-    if (pendingConfirmCallback) pendingConfirmCallback();
-    window.closeConfirmModal();
-  };
-};
-window.closeConfirmModal = () => {
-  document.getElementById('custom-confirm-modal')?.classList.remove('visible');
-  pendingConfirmCallback = null;
-};
-
-// ==========================================
-// HELPERS
-// ==========================================
 function escapeHtml(s: any): string {
   if (s === null || s === undefined) return '';
   return String(s)
@@ -1237,53 +43,1077 @@ function escapeHtml(s: any): string {
     .replace(/'/g, '&#39;');
 }
 
-function formatDuration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '—';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m === 0) return `${s}s`;
-  return `${m}m ${s.toString().padStart(2, '0')}s`;
+function formatDuration(sec: number | null | undefined): string {
+  if (sec === null || sec === undefined) return '—';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m < 60) return `${m}m ${s}s`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${h}h ${mm}m`;
+}
+
+function formatDate(d: string | Date | null | undefined): string {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return '—';
+  return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatDateTime(d: string | Date | null | undefined): string {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return '—';
+  return dt.toLocaleString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function formatCountdown(target: string | Date | null | undefined): string {
+  if (!target) return 'Date TBA';
+  const dt = new Date(target);
+  if (isNaN(dt.getTime())) return 'Date TBA';
+  const diff = dt.getTime() - Date.now();
+  if (diff <= 0) return 'Starting soon';
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  const mins = Math.floor((diff % 3600000) / 60000);
+  const secs = Math.floor((diff % 60000) / 1000);
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+}
+
+function getToken(): string | null {
+  if (currentToken) return currentToken;
+  currentToken = localStorage.getItem('pg_token');
+  return currentToken;
+}
+
+function setToken(t: string | null) {
+  currentToken = t;
+  if (t) localStorage.setItem('pg_token', t);
+  else localStorage.removeItem('pg_token');
+}
+
+function setUser(u: any) {
+  currentUser = u;
+  if (u) localStorage.setItem('pg_user', JSON.stringify(u));
+  else localStorage.removeItem('pg_user');
+}
+
+function getStoredUser(): any {
+  try { return JSON.parse(localStorage.getItem('pg_user') || 'null'); }
+  catch { return null; }
+}
+
+async function api(path: string, opts: RequestInit = {}): Promise<any> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(opts.headers as Record<string, string> || {})
+  };
+  const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`${API}${path}`, { ...opts, headers });
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+    return data;
+  }
+  if (ct.includes('text/csv')) {
+    return await res.text();
+  }
+  const text = await res.text();
+  if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+  return text;
 }
 
 // ==========================================
-// TYPE DECLARATIONS
+// VIEW ROUTER
 // ==========================================
-declare global {
-  interface Window {
-    navigateTo: (targetId: string, pushHistory?: boolean) => void;
-    navigateBack: () => void;
-    login: () => void;
-    register: () => void;
-    showRegister: () => void;
-    showLogin: () => void;
-    logout: () => void;
-    filterTests: (subject: string) => void;
-    openTestDetail: (testId: string) => void;
-    startTestFromDetail: () => void;
-    viewTestRanking: () => void;
-    showResumeModal: () => void;
-    hideResumeModal: () => void;
-    acceptResumeModal: () => void;
-    restartExam: () => void;
-    selectAnswer: (button: HTMLElement, letter: string) => void;
-    nextQuestion: () => void;
-    previousQuestion: () => void;
-    playSound: (type: string) => void;
-    quitExam: () => void;
-    adminLogin: () => void;
-    switchAdminTab: (tabId: string) => void;
-    createTest: (form: HTMLFormElement) => void;
-    toggleTestActive: (id: string, active: boolean) => void;
-    editTestDuration: (id: string, currentSec: number) => void;
-    updateTestDuration: (id: string, durationSec: number) => void;
-    deleteTest: (id: string, name: string) => void;
-    loadCsvFile: (input: HTMLInputElement) => void;
-    uploadCsv: (form: HTMLFormElement) => void;
-    downloadRankingsCsv: () => void;
-    submitAnnouncement: (form: HTMLFormElement) => void;
-    deleteUser: (id: string) => void;
-    deleteAnnouncement: (id: string) => void;
-    confirmAction: (message: string, callback: () => void, confirmLabel?: string, cancelLabel?: string) => void;
-    closeConfirmModal: () => void;
+function showView(id: string) {
+  $$('.view').forEach(v => {
+    v.classList.remove('visible', 'active-flex', 'active-grid');
+  });
+  const el = $(id);
+  if (el) {
+    el.classList.add('visible');
+    if (id === 'view-0') el.classList.add('active-flex');
+  }
+  window.scrollTo(0, 0);
+}
+
+function navigateTo(target: string) {
+  switch (target) {
+    case 'dashboard':
+      if (currentUser?.isAdmin) { showView('view-9'); switchAdminTab('dashboard'); return; }
+      showView('view-1'); loadDashboard();
+      break;
+    case 'tests':
+      showView('view-2'); loadTestsList();
+      break;
+    case 'announcements':
+      showView('view-8'); loadAnnouncements();
+      break;
+    case 'profile':
+      showView('view-7'); loadProfile();
+      break;
+    case 'logout':
+      setToken(null); setUser(null);
+      showView('view-0');
+      break;
   }
 }
+
+// ==========================================
+// AUTH
+// ==========================================
+function setAuthMode(mode: 'login' | 'register') {
+  authMode = mode;
+  $('auth-tab-login')?.classList.toggle('active', mode === 'login');
+  $('auth-tab-register')?.classList.toggle('active', mode === 'register');
+  $('register-name-group')?.classList.toggle('hidden', mode === 'login');
+  ($('auth-submit') as HTMLButtonElement)!.textContent = mode === 'login' ? 'Login' : 'Register';
+  $('auth-error')?.classList.add('hidden');
+}
+
+async function handleAuthSubmit(e: Event) {
+  e.preventDefault();
+  const email = ($('auth-email') as HTMLInputElement)?.value?.trim();
+  const password = ($('auth-password') as HTMLInputElement)?.value;
+  const name = ($('auth-name') as HTMLInputElement)?.value?.trim();
+  const errEl = $('auth-error');
+  if (errEl) errEl.classList.add('hidden');
+
+  if (!email || !password) {
+    if (errEl) { errEl.textContent = 'Email and password are required.'; errEl.classList.remove('hidden'); }
+    return;
+  }
+
+  try {
+    const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    const body: any = { email, password };
+    if (authMode === 'register') {
+      if (!name) throw new Error('Name is required');
+      body.name = name;
+    }
+    const data = await api(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+    setToken(data.token);
+    setUser(data.user);
+    if (data.user?.isAdmin) {
+      showView('view-9');
+      switchAdminTab('dashboard');
+      loadAdminDashboard();
+    } else {
+      showView('view-1');
+      loadDashboard();
+    }
+  } catch (err: any) {
+    if (errEl) { errEl.textContent = err.message || 'Authentication failed.'; errEl.classList.remove('hidden'); }
+  }
+}
+
+// ==========================================
+// DASHBOARD
+// ==========================================
+async function loadDashboard() {
+  if (!currentUser) {
+    showView('view-0');
+    return;
+  }
+  const nameEl = $('dash-name');
+  if (nameEl) nameEl.textContent = currentUser.name || 'Student';
+  try {
+    const profile = await api('/api/exam/profile');
+    const attempts = profile.attempts || [];
+    const testsCount = new Set(attempts.map((a: any) => String(a.test?._id))).size;
+    const bestScore = attempts.reduce((max: number, a: any) => {
+      const pct = a.totalQuestions ? (a.correctCount / a.totalQuestions) * 100 : 0;
+      return Math.max(max, pct);
+    }, 0);
+    const avgPct = attempts.length ? attempts.reduce((s: number, a: any) => {
+      const pct = a.totalQuestions ? (a.correctCount / a.totalQuestions) * 100 : 0;
+      return s + pct;
+    }, 0) / attempts.length : 0;
+    renderStats('dash-stats', [
+      { label: 'Tests Attempted', value: String(testsCount) },
+      { label: 'Total Submissions', value: String(attempts.length) },
+      { label: 'Best Score', value: `${Math.round(bestScore)}%` },
+      { label: 'Average Score', value: `${Math.round(avgPct)}%` }
+    ]);
+  } catch {
+    renderStats('dash-stats', [
+      { label: 'Tests Attempted', value: '0' },
+      { label: 'Total Submissions', value: '0' },
+      { label: 'Best Score', value: '—' },
+      { label: 'Average Score', value: '—' }
+    ]);
+  }
+}
+
+function renderStats(containerId: string, stats: {label: string, value: string}[]) {
+  const c = $(containerId);
+  if (!c) return;
+  c.innerHTML = stats.map(s => `
+    <div class="stat-card">
+      <div class="stat-label">${escapeHtml(s.label)}</div>
+      <div class="stat-value">${escapeHtml(s.value)}</div>
+    </div>
+  `).join('');
+}
+
+// ==========================================
+// TESTS LIST
+// ==========================================
+async function loadTestsList() {
+  const grid = $('tests-grid');
+  const empty = $('tests-empty');
+  if (grid) grid.innerHTML = '<div class="empty-state"><div class="emoji">⏳</div><h3>Loading…</h3></div>';
+  try {
+    const tests = await api('/api/exam/tests');
+    allTests = tests || [];
+    renderSubjectPills();
+    renderTestsGrid();
+  } catch (err: any) {
+    if (grid) grid.innerHTML = `<div class="empty-state"><div class="emoji">⚠️</div><h3>Failed to load</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+function renderSubjectPills() {
+  const pills = $('subject-pills');
+  if (!pills) return;
+  const subjects = Array.from(new Set(allTests.map((t: any) => t.subject).filter(Boolean))) as string[];
+  const all = ['All', ...subjects];
+  pills.innerHTML = all.map(s => `
+    <button class="pill ${s === activeSubjectFilter ? 'active' : ''}" data-subject="${escapeHtml(s)}">${escapeHtml(s)}</button>
+  `).join('');
+  pills.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      activeSubjectFilter = (b as HTMLElement).dataset.subject || 'All';
+      renderSubjectPills();
+      renderTestsGrid();
+    });
+  });
+}
+
+function renderTestsGrid() {
+  const grid = $('tests-grid');
+  const empty = $('tests-empty');
+  if (!grid) return;
+  const filtered = activeSubjectFilter === 'All'
+    ? allTests
+    : allTests.filter((t: any) => t.subject === activeSubjectFilter);
+  if (!filtered.length) {
+    grid.innerHTML = '';
+    empty?.classList.remove('hidden');
+    return;
+  }
+  empty?.classList.add('hidden');
+  grid.innerHTML = filtered.map((t: any) => testCardHtml(t)).join('');
+  grid.querySelectorAll('[data-test-card]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('button')) return;
+      const id = (el as HTMLElement).dataset.testCard;
+      if (id) { currentTest = filtered.find((t:any) => String(t._id) === id); showView('view-3'); loadTestDetail(); }
+    });
+  });
+  grid.querySelectorAll('[data-action="start"]').forEach(b => {
+    b.addEventListener('click', () => {
+      const id = (b as HTMLElement).dataset.testId;
+      const t = filtered.find((x:any) => String(x._id) === id);
+      if (t) { currentTest = t; showView('view-3'); loadTestDetail(); }
+    });
+  });
+  grid.querySelectorAll('[data-action="ranking"]').forEach(b => {
+    b.addEventListener('click', () => {
+      const id = (b as HTMLElement).dataset.testId;
+      if (id) { lastRankingTestId = id; showView('view-6'); loadTestRanking(); }
+    });
+  });
+}
+
+function testCardHtml(t: any): string {
+  const status = t.status || 'live';
+  if (status === 'coming_soon') {
+    return `
+      <div class="test-card status-coming_soon" data-test-card="${escapeHtml(t._id)}">
+        <div class="test-card-header">
+          <span class="test-subject">${escapeHtml(t.subject || 'Test')}</span>
+          <span class="status-badge coming-soon"><span class="dot"></span>Coming Soon</span>
+        </div>
+        <div class="test-name">${escapeHtml(t.name)}</div>
+        <div class="test-meta">
+          <span>⏱ ${formatDuration(t.durationSec)}</span>
+          <span>📝 ${t.totalQuestions || 0} Q</span>
+        </div>
+        <div class="test-countdown">
+          <span class="countdown-label">Starts in</span>
+          <span class="countdown-value" data-countdown="${escapeHtml(t.scheduledAt || '')}">${formatCountdown(t.scheduledAt)}</span>
+          <div style="font-size:11px;opacity:0.7;margin-top:2px;">on ${formatDate(t.scheduledAt)}</div>
+        </div>
+      </div>`;
+  }
+  // live
+  return `
+    <div class="test-card status-live" data-test-card="${escapeHtml(t._id)}">
+      <div class="test-card-header">
+        <span class="test-subject">${escapeHtml(t.subject || 'Test')}</span>
+        <span class="status-badge live"><span class="dot"></span>Live</span>
+      </div>
+      <div class="test-name">${escapeHtml(t.name)}</div>
+      <div class="test-meta">
+        <span>⏱ ${formatDuration(t.durationSec)}</span>
+        <span>📝 ${t.totalQuestions || 0} Q</span>
+      </div>
+      <div class="test-actions">
+        <button class="btn btn-gold btn-sm" data-action="start" data-test-id="${escapeHtml(t._id)}">Start Test →</button>
+        <button class="btn btn-ghost btn-sm" data-action="ranking" data-test-id="${escapeHtml(t._id)}">Ranking</button>
+      </div>
+    </div>`;
+}
+
+// Live countdown ticker (updates every second)
+function startCountdownTicker() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    $$('[data-countdown]').forEach(el => {
+      const target = (el as HTMLElement).dataset.countdown;
+      el.textContent = formatCountdown(target);
+    });
+  }, 1000);
+}
+
+// ==========================================
+// TEST DETAIL
+// ==========================================
+async function loadTestDetail() {
+  if (!currentTest) return;
+  const c = $('test-detail-card');
+  if (!c) return;
+  const t = currentTest;
+  const status = t.status || 'live';
+  let resumeBlock = '';
+  try {
+    const session = await api(`/api/exam/session/${t._id}`);
+    if (session) {
+      resumeBlock = `
+        <div class="alert alert-info mt-16">
+          You have an in-progress session (${session.currentIndex + 1} answered, ${formatDuration(session.remainingTime)} left).
+          <button class="btn btn-ghost btn-sm mt-8" id="resume-btn">Resume</button>
+          <button class="btn btn-danger btn-sm mt-8" id="restart-btn" style="margin-left:8px;">Start Over</button>
+        </div>`;
+    }
+  } catch {}
+
+  c.innerHTML = `
+    <span class="test-subject">${escapeHtml(t.subject)}</span>
+    <h1 class="page-title mt-8" style="margin-top:12px;">${escapeHtml(t.name)}</h1>
+    <div class="status-badge ${status === 'live' ? 'live' : 'coming-soon'}" style="margin:8px 0;">
+      <span class="dot"></span>${status === 'live' ? 'Live' : 'Coming Soon'}
+    </div>
+    <div class="stats-row mt-16">
+      <div class="stat-card"><div class="stat-label">Duration</div><div class="stat-value">${formatDuration(t.durationSec)}</div></div>
+      <div class="stat-card"><div class="stat-label">Questions</div><div class="stat-value">${t.totalQuestions || 0}</div></div>
+    </div>
+    ${status === 'coming_soon' ? `
+      <div class="test-countdown mt-16">
+        <span class="countdown-label">Starts in</span>
+        <span class="countdown-value" data-countdown="${escapeHtml(t.scheduledAt || '')}">${formatCountdown(t.scheduledAt)}</span>
+        <div style="font-size:11px;opacity:0.7;margin-top:2px;">on ${formatDateTime(t.scheduledAt)}</div>
+      </div>
+      <p class="text-mut mt-16">This test isn't live yet. Check back soon!</p>
+    ` : ''}
+    ${status === 'live' ? `
+      <div class="row mt-24">
+        <button class="btn btn-gold btn-lg" id="start-test-btn">Start Test →</button>
+        <button class="btn btn-ghost" id="view-ranking-btn">View Ranking</button>
+      </div>
+    ` : ''}
+    ${resumeBlock}
+  `;
+
+  $('start-test-btn')?.addEventListener('click', () => { showView('view-4'); startExam(); });
+  $('view-ranking-btn')?.addEventListener('click', () => {
+    lastRankingTestId = t._id;
+    showView('view-6');
+    loadTestRanking();
+  });
+  $('resume-btn')?.addEventListener('click', () => { showView('view-4'); startExam(true); });
+  $('restart-btn')?.addEventListener('click', async () => {
+    try { await api(`/api/exam/session/${t._id}`, { method: 'DELETE' }); } catch {}
+    showView('view-4'); startExam();
+  });
+  startCountdownTicker();
+}
+
+// ==========================================
+// EXAM ENGINE
+// ==========================================
+async function startExam(resume = false) {
+  if (!currentTest) return;
+  const t = currentTest;
+  const nameEl = $('exam-test-name');
+  if (nameEl) nameEl.textContent = t.name;
+
+  try {
+    const data = await api(`/api/exam/tests/${t._id}/questions`);
+    questions = data.questions || [];
+    userAnswers = {};
+    currentQuestionIndex = 0;
+    remainingTime = t.durationSec || 3000;
+    examStartedAt = new Date().toISOString();
+
+    if (resume) {
+      try {
+        const s = await api(`/api/exam/session/${t._id}`);
+        if (s) {
+          currentQuestionIndex = s.currentIndex || 0;
+          userAnswers = s.answers ? Object.fromEntries(s.answers instanceof Map ? s.answers : Object.entries(s.answers)) : {};
+          remainingTime = s.remainingTime || t.durationSec;
+          if (s.startedAt) examStartedAt = s.startedAt;
+        }
+      } catch {}
+    }
+
+    renderQuestion();
+    startExamTimer();
+    startAutoSave();
+  } catch (err: any) {
+    alert('Failed to load questions: ' + err.message);
+    showView('view-3');
+  }
+}
+
+function renderQuestion() {
+  if (!questions.length) return;
+  const q = questions[currentQuestionIndex];
+  const qNum = $('exam-q-num');
+  if (qNum) qNum.textContent = `Q ${currentQuestionIndex + 1}`;
+  const prog = $('exam-progress-text');
+  if (prog) prog.textContent = `Question ${currentQuestionIndex + 1} of ${questions.length}`;
+  const fill = $('exam-progress-fill');
+  if (fill) fill.style.width = `${((currentQuestionIndex + 1) / questions.length) * 100}%`;
+
+  const passage = $('exam-passage');
+  if (passage) {
+    if (q.passage) {
+      passage.innerHTML = `<span class="passage-label">Passage</span>${escapeHtml(q.passage)}`;
+      passage.classList.remove('hidden');
+    } else {
+      passage.classList.add('hidden');
+      passage.innerHTML = '';
+    }
+  }
+
+  const qt = $('exam-question-text');
+  if (qt) qt.textContent = q.question;
+
+  const opts = $('exam-options');
+  if (!opts) return;
+  const letters = ['A', 'B', 'C', 'D'] as const;
+  opts.innerHTML = letters.map(L => {
+    const text = q.options?.[L] || '';
+    const selected = userAnswers[q._id] === L ? 'selected' : '';
+    return `
+      <button class="exam-option ${selected}" data-letter="${L}">
+        <span class="exam-option-letter">${L}</span>
+        <span class="exam-option-text">${escapeHtml(text)}</span>
+      </button>`;
+  }).join('');
+  opts.querySelectorAll('.exam-option').forEach(b => {
+    b.addEventListener('click', () => {
+      const L = (b as HTMLElement).dataset.letter!;
+      userAnswers[q._id] = L;
+      opts.querySelectorAll('.exam-option').forEach(o => o.classList.remove('selected'));
+      b.classList.add('selected');
+    });
+  });
+}
+
+function startExamTimer() {
+  if (examTimer) clearInterval(examTimer);
+  updateTimerDisplay();
+  examTimer = setInterval(() => {
+    remainingTime = Math.max(0, remainingTime - 1);
+    updateTimerDisplay();
+    if (remainingTime <= 0) {
+      clearInterval(examTimer);
+      submitExam(true);
+    }
+  }, 1000);
+}
+
+function updateTimerDisplay() {
+  const el = $('exam-timer');
+  if (!el) return;
+  const h = Math.floor(remainingTime / 3600);
+  const m = Math.floor((remainingTime % 3600) / 60);
+  const s = remainingTime % 60;
+  el.textContent = h > 0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+    : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  el.classList.toggle('warning', remainingTime <= 300 && remainingTime > 60);
+  el.classList.toggle('danger', remainingTime <= 60);
+}
+
+let autoSaveTimer: any = null;
+function startAutoSave() {
+  if (autoSaveTimer) clearInterval(autoSaveTimer);
+  autoSaveTimer = setInterval(saveSession, 30000);
+}
+
+async function saveSession() {
+  if (!currentTest) return;
+  try {
+    await api('/api/exam/session/save', {
+      method: 'POST',
+      body: JSON.stringify({
+        testId: currentTest._id,
+        currentIndex: currentQuestionIndex,
+        answers: userAnswers,
+        remainingTime,
+        startedAt: examStartedAt
+      })
+    });
+  } catch {}
+}
+
+async function submitExam(auto = false) {
+  if (examTimer) clearInterval(examTimer);
+  if (autoSaveTimer) clearInterval(autoSaveTimer);
+  if (!currentTest) return;
+  try {
+    if (!auto) await saveSession();
+    const result = await api('/api/exam/submit', {
+      method: 'POST',
+      body: JSON.stringify({
+        testId: currentTest._id,
+        answers: userAnswers,
+        startedAt: examStartedAt
+      })
+    });
+    lastResult = result;
+    lastRankingTestId = currentTest._id;
+    showView('view-5');
+    renderResult();
+  } catch (err: any) {
+    alert('Submit failed: ' + err.message);
+    showView('view-3');
+  }
+}
+
+function renderResult() {
+  const el = $('result-hero');
+  if (!el || !lastResult) return;
+  const r = lastResult;
+  const test = r.test || {};
+  let rank: number | null = null;
+  // Try to compute rank from /ranking
+  api(`/api/exam/tests/${test._id || lastRankingTestId}/ranking`)
+    .then(data => {
+      const me = data.ranking?.find((row:any) => String(row.userId) === String(currentUser?.id));
+      if (me) {
+        const rankEl = $('result-rank');
+        if (rankEl) rankEl.textContent = `#${me.rank}`;
+      }
+    })
+    .catch(() => {});
+
+  el.innerHTML = `
+    <div class="result-score">${r.correctCount}<span class="total"> / ${r.totalQuestions}</span></div>
+    <div class="result-meta">
+      <div class="meta-item">
+        <span class="meta-value">${r.percentage}%</span>
+        <span class="meta-label">Score</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-value">${formatDuration(r.timeTakenSeconds)}</span>
+        <span class="meta-label">Time Taken</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-value" id="result-rank">—</span>
+        <span class="meta-label">Your Rank</span>
+      </div>
+    </div>
+    <p style="margin-top:20px; opacity:0.85;">${escapeHtml(test.name || 'Test')} • ${escapeHtml(test.subject || '')}</p>
+  `;
+}
+
+// ==========================================
+// RANKING (per-test)
+// ==========================================
+async function loadTestRanking() {
+  if (!lastRankingTestId) return;
+  const podium = $('ranking-podium');
+  const list = $('ranking-list');
+  const title = $('ranking-title');
+  const tag = $('ranking-test-tag');
+  if (podium) podium.innerHTML = '<div class="empty-state"><div class="emoji">⏳</div></div>';
+  if (list) list.innerHTML = '';
+  try {
+    const data = await api(`/api/exam/tests/${lastRankingTestId}/ranking`);
+    const test = data.test || {};
+    if (title) title.textContent = test.name || 'Ranking';
+    if (tag) tag.textContent = test.subject || 'Ranking';
+    const ranking = data.ranking || [];
+    if (!ranking.length) {
+      if (podium) podium.innerHTML = '';
+      if (list) list.innerHTML = '<div class="empty-state"><div class="emoji">🏆</div><h3>No attempts yet</h3><p>Be the first to take this test!</p></div>';
+      return;
+    }
+    // Podium (top 3)
+    const top3 = ranking.slice(0, 3);
+    const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean); // 2nd, 1st, 3rd
+    if (podium) {
+      podium.innerHTML = podiumOrder.map((r:any) => {
+        const rank = r.rank;
+        const cls = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : 'rank-3';
+        const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉';
+        const me = String(r.userId) === String(currentUser?.id) ? ' (You)' : '';
+        return `
+          <div class="podium-card ${cls}">
+            <div class="podium-rank">${medal}</div>
+            <div class="podium-name">${escapeHtml(r.name)}${me}</div>
+            <div class="podium-score">${r.correctCount} / ${r.totalQuestions} • ${formatDuration(r.timeTakenSeconds)}</div>
+          </div>`;
+      }).join('');
+    }
+    if (list) {
+      list.innerHTML = ranking.map((r:any) => {
+        const me = String(r.userId) === String(currentUser?.id) ? 'me' : '';
+        return `
+          <div class="rank-row ${me}">
+            <div class="rank-num">#${r.rank}</div>
+            <div>
+              <div class="rank-name">${escapeHtml(r.name)}${me ? ' (You)' : ''}</div>
+              <div class="rank-detail">${formatDuration(r.timeTakenSeconds)} • ${formatDateTime(r.submittedAt)}</div>
+            </div>
+            <div class="rank-score">${r.correctCount} / ${r.totalQuestions}</div>
+          </div>`;
+      }).join('');
+    }
+  } catch (err:any) {
+    if (podium) podium.innerHTML = `<div class="empty-state"><div class="emoji">⚠️</div><h3>Failed to load</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+// ==========================================
+// PROFILE
+// ==========================================
+async function loadProfile() {
+  if (!currentUser) { showView('view-0'); return; }
+  const card = $('profile-card');
+  const hist = $('profile-history');
+  if (card) {
+    const initials = (currentUser.name || 'U').split(' ').map((s:string) => s[0]).slice(0,2).join('').toUpperCase();
+    card.innerHTML = `
+      <div class="profile-header">
+        <div class="avatar">${escapeHtml(initials)}</div>
+        <div>
+          <h2 style="margin-bottom:4px;">${escapeHtml(currentUser.name)}</h2>
+          <p class="text-mut">${escapeHtml(currentUser.email)}</p>
+        </div>
+      </div>`;
+  }
+  try {
+    const profile = await api('/api/exam/profile');
+    const attempts = profile.attempts || [];
+    if (hist) {
+      if (!attempts.length) {
+        hist.innerHTML = '<div class="empty-state"><div class="emoji">📚</div><h3>No attempts yet</h3><p>Take your first test to see history here.</p></div>';
+      } else {
+        hist.innerHTML = `
+          <div class="card">
+            <div style="overflow-x:auto;">
+              <table class="history-table">
+                <thead><tr><th>Test</th><th>Subject</th><th>Score</th><th>Time</th><th>Date</th></tr></thead>
+                <tbody>
+                  ${attempts.map((a:any) => `
+                    <tr>
+                      <td>${escapeHtml(a.test?.name || '—')}</td>
+                      <td>${escapeHtml(a.test?.subject || '—')}</td>
+                      <td><strong>${a.correctCount} / ${a.totalQuestions}</strong> (${a.percentage || 0}%)</td>
+                      <td>${formatDuration(a.timeTakenSeconds)}</td>
+                      <td>${formatDateTime(a.submittedAt || a.completedAt)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>`;
+      }
+    }
+  } catch (err:any) {
+    if (hist) hist.innerHTML = `<div class="empty-state"><div class="emoji">⚠️</div><h3>Failed to load</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+// ==========================================
+// ANNOUNCEMENTS
+// ==========================================
+async function loadAnnouncements() {
+  const list = $('announcements-list');
+  if (list) list.innerHTML = '<div class="empty-state"><div class="emoji">⏳</div></div>';
+  try {
+    const anns = await api('/api/exam/announcements');
+    if (list) {
+      if (!anns.length) {
+        list.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><h3>No announcements</h3></div>';
+      } else {
+        list.innerHTML = anns.map((a:any) => `
+          <div class="card">
+            <div class="row between">
+              <h3>${escapeHtml(a.emoji || '📢')} ${escapeHtml(a.title)}</h3>
+              <span class="text-mut text-sm">${formatDateTime(a.createdAt)}</span>
+            </div>
+            <p class="text-mut mt-8">${escapeHtml(a.description || '')}</p>
+          </div>
+        `).join('');
+      }
+    }
+  } catch (err:any) {
+    if (list) list.innerHTML = `<div class="empty-state"><div class="emoji">⚠️</div><h3>Failed to load</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+// ==========================================
+// ADMIN PANEL
+// ==========================================
+function switchAdminTab(tab: string) {
+  $$('.admin-nav-item').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.adminTab === tab));
+  $$('.admin-tab-content').forEach(c => c.classList.add('hidden'));
+  const el = $(`admin-tab-${tab}`);
+  if (el) el.classList.remove('hidden');
+  if (tab === 'dashboard') loadAdminDashboard();
+  if (tab === 'tests') loadAdminTests();
+  if (tab === 'users') loadAdminUsers();
+  if (tab === 'announcements') loadAdminAnnouncements();
+  if (tab === 'logout') navigateTo('logout');
+}
+
+async function loadAdminDashboard() {
+  try {
+    const stats = await api('/api/admin/stats');
+    renderStats('admin-stats', [
+      { label: 'Total Users', value: String(stats.totalUsers || 0) },
+      { label: 'Total Tests', value: String(stats.totalTests || 0) },
+      { label: 'Total Attempts', value: String(stats.totalAttempts || 0) },
+      { label: 'Total Questions', value: String(stats.totalQuestions || 0) }
+    ]);
+  } catch {}
+}
+
+async function loadAdminTests() {
+  try {
+    const tests = await api('/api/admin/tests');
+    const tbody = $('admin-tests-tbody');
+    if (tbody) {
+      if (!tests.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</td></tr>';
+      } else {
+        tbody.innerHTML = tests.map((t:any) => {
+          const status = t.status || 'live';
+          const statusCls = !t.active ? 'hidden' : status;
+          const statusLabel = !t.active ? 'Hidden' : (status === 'live' ? 'Live' : 'Coming Soon');
+          return `
+            <tr>
+              <td><strong>${escapeHtml(t.name)}</strong><br><span class="text-mut text-sm">${formatDateTime(t.scheduledAt) === '—' ? '' : '📅 ' + formatDateTime(t.scheduledAt)}</span></td>
+              <td>${escapeHtml(t.subject)}</td>
+              <td><span class="mini-status ${statusCls}">${statusLabel}</span></td>
+              <td>${formatDuration(t.durationSec)}</td>
+              <td>${t.totalQuestions || 0}</td>
+              <td>
+                <button class="icon-btn edit" data-edit="${escapeHtml(t._id)}">Edit</button>
+                <button class="icon-btn ${t.active ? 'warn' : 'success'}" data-toggle="${escapeHtml(t._id)}">${t.active ? 'Hide' : 'Show'}</button>
+                <button class="icon-btn danger" data-delete="${escapeHtml(t._id)}">Delete</button>
+              </td>
+            </tr>`;
+        }).join('');
+      }
+      tbody.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editTest((b as HTMLElement).dataset.edit!)));
+      tbody.querySelectorAll('[data-toggle]').forEach(b => b.addEventListener('click', () => toggleTestActive((b as HTMLElement).dataset.toggle!)));
+      tbody.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', () => deleteTest((b as HTMLElement).dataset.delete!)));
+    }
+    // Populate test selectors
+    const opts = tests.map((t:any) => `<option value="${escapeHtml(t._id)}">${escapeHtml(t.name)} (${escapeHtml(t.subject)})</option>`).join('');
+    const csvSel = $('csv-test-id'); if (csvSel) csvSel.innerHTML = opts;
+    const dlSel = $('dl-test-id'); if (dlSel) dlSel.innerHTML = opts;
+    // Subject suggestions
+    const subjects = await api('/api/admin/subjects').catch(() => ({ subjects: [] }));
+    const dl = $('subject-suggestions');
+    if (dl) dl.innerHTML = (subjects.subjects || []).map((s:string) => `<option value="${escapeHtml(s)}">`).join('');
+  } catch (err:any) {
+    const tbody = $('admin-tests-tbody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+let editingTestId: string | null = null;
+function newTestForm() {
+  editingTestId = null;
+  ($('tf-name') as HTMLInputElement).value = '';
+  ($('tf-subject') as HTMLInputElement).value = '';
+  ($('tf-duration') as HTMLInputElement).value = '3600';
+  ($('tf-status') as HTMLSelectElement).value = 'live';
+  ($('tf-scheduled') as HTMLInputElement).value = '';
+  ($('admin-test-form-title') as HTMLElement).textContent = 'Create New Test';
+  $('admin-test-form-card')?.classList.remove('hidden');
+}
+
+async function editTest(id: string) {
+  const t = allTests.find(x => x._id === id) || (await api('/api/admin/tests')).find((x:any) => x._id === id);
+  if (!t) return;
+  editingTestId = id;
+  ($('tf-name') as HTMLInputElement).value = t.name || '';
+  ($('tf-subject') as HTMLInputElement).value = t.subject || '';
+  ($('tf-duration') as HTMLInputElement).value = String(t.durationSec || 3600);
+  ($('tf-status') as HTMLSelectElement).value = t.status || 'live';
+  if (t.scheduledAt) {
+    const dt = new Date(t.scheduledAt);
+    const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    ($('tf-scheduled') as HTMLInputElement).value = local;
+  } else {
+    ($('tf-scheduled') as HTMLInputElement).value = '';
+  }
+  ($('admin-test-form-title') as HTMLElement).textContent = `Edit: ${t.name}`;
+  $('admin-test-form-card')?.classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function saveTest() {
+  const name = ($('tf-name') as HTMLInputElement).value.trim();
+  const subject = ($('tf-subject') as HTMLInputElement).value.trim();
+  const durationSec = parseInt(($('tf-duration') as HTMLInputElement).value, 10);
+  const status = ($('tf-status') as HTMLSelectElement).value as 'live' | 'coming_soon';
+  const scheduled = ($('tf-scheduled') as HTMLInputElement).value;
+  if (!name || !subject) { alert('Name and subject are required.'); return; }
+  if (!durationSec || durationSec < 60) { alert('Duration must be at least 60 seconds.'); return; }
+  const body: any = {
+    name, subject, durationSec, status,
+    scheduledAt: scheduled ? new Date(scheduled).toISOString() : null
+  };
+  try {
+    if (editingTestId) {
+      await api(`/api/admin/tests/${editingTestId}`, { method: 'PATCH', body: JSON.stringify(body) });
+    } else {
+      await api('/api/admin/tests', { method: 'POST', body: JSON.stringify(body) });
+    }
+    $('admin-test-form-card')?.classList.add('hidden');
+    loadAdminTests();
+  } catch (err:any) {
+    alert('Save failed: ' + err.message);
+  }
+}
+
+async function toggleTestActive(id: string) {
+  const t = allTests.find(x => x._id === id);
+  try {
+    await api(`/api/admin/tests/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active: !(t?.active ?? true) })
+    });
+    loadAdminTests();
+  } catch (err:any) { alert(err.message); }
+}
+
+async function deleteTest(id: string) {
+  if (!confirm('Delete this test AND all its questions, attempts, sessions? This cannot be undone.')) return;
+  try {
+    await api(`/api/admin/tests/${id}`, { method: 'DELETE' });
+    loadAdminTests();
+  } catch (err:any) { alert(err.message); }
+}
+
+async function uploadCsv() {
+  const testId = ($('csv-test-id') as HTMLSelectElement).value;
+  const csv = ($('csv-text') as HTMLTextAreaElement).value;
+  const msg = $('csv-upload-msg');
+  if (!testId) { if (msg) { msg.textContent = 'Select a test first.'; msg.style.color = 'var(--red)'; } return; }
+  if (!csv.trim()) { if (msg) { msg.textContent = 'Paste CSV or pick a file first.'; msg.style.color = 'var(--red)'; } return; }
+  if (msg) { msg.textContent = 'Uploading…'; msg.style.color = 'var(--blue-deep)'; }
+  try {
+    const r = await api(`/api/admin/tests/${testId}/questions/bulk`, {
+      method: 'POST',
+      body: JSON.stringify({ csv })
+    });
+    if (msg) { msg.textContent = `✅ ${r.message}`; msg.style.color = 'var(--green)'; }
+    loadAdminTests();
+  } catch (err:any) {
+    if (msg) { msg.textContent = `❌ ${err.message}`; msg.style.color = 'var(--red)'; }
+  }
+}
+
+async function downloadRankingsCsv() {
+  const testId = ($('dl-test-id') as HTMLSelectElement).value;
+  if (!testId) { alert('Select a test first.'); return; }
+  try {
+    const token = getToken();
+    const res = await fetch(`${API}/api/admin/tests/${testId}/rankings.csv`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Download failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rankings-${testId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err:any) { alert(err.message); }
+}
+
+async function loadAdminUsers() {
+  try {
+    const users = await api('/api/admin/users');
+    const tbody = $('admin-users-tbody');
+    if (tbody) {
+      tbody.innerHTML = users.map((u:any) => `
+        <tr>
+          <td>${escapeHtml(u.name)}</td>
+          <td>${escapeHtml(u.email)}</td>
+          <td>${formatDate(u.createdAt)}</td>
+          <td>${u.totalAttempts || 0}</td>
+          <td><button class="icon-btn danger" data-del-user="${escapeHtml(u._id)}">Delete</button></td>
+        </tr>
+      `).join('') || '<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--text-light);">No users yet.</td></tr>';
+      tbody.querySelectorAll('[data-del-user]').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('Delete this user and all their attempts?')) return;
+        try { await api(`/api/admin/users/${(b as HTMLElement).dataset.delUser}`, { method: 'DELETE' }); loadAdminUsers(); }
+        catch (e:any) { alert(e.message); }
+      }));
+    }
+  } catch (err:any) { alert(err.message); }
+}
+
+async function loadAdminAnnouncements() {
+  try {
+    const anns = await api('/api/admin/announcements');
+    const list = $('admin-ann-list');
+    if (list) {
+      list.innerHTML = anns.length ? anns.map((a:any) => `
+        <div class="card card-tight row between">
+          <div>
+            <strong>${escapeHtml(a.emoji || '📢')} ${escapeHtml(a.title)}</strong>
+            <p class="text-mut text-sm">${escapeHtml(a.description || '')}</p>
+          </div>
+          <button class="icon-btn danger" data-del-ann="${escapeHtml(a._id)}">Delete</button>
+        </div>
+      `).join('') : '<p class="text-mut">No announcements yet.</p>';
+      list.querySelectorAll('[data-del-ann]').forEach(b => b.addEventListener('click', async () => {
+        try { await api(`/api/admin/announcements/${(b as HTMLElement).dataset.delAnn}`, { method: 'DELETE' }); loadAdminAnnouncements(); }
+        catch (e:any) { alert(e.message); }
+      }));
+    }
+  } catch (err:any) { alert(err.message); }
+}
+
+async function createAnnouncement() {
+  const title = ($('ann-title') as HTMLInputElement).value.trim();
+  const description = ($('ann-desc') as HTMLTextAreaElement).value.trim();
+  const emoji = ($('ann-emoji') as HTMLInputElement).value.trim() || '📢';
+  if (!title) { alert('Title required.'); return; }
+  try {
+    await api('/api/admin/announcements', { method: 'POST', body: JSON.stringify({ title, description, emoji }) });
+    ($('ann-title') as HTMLInputElement).value = '';
+    ($('ann-desc') as HTMLTextAreaElement).value = '';
+    loadAdminAnnouncements();
+  } catch (err:any) { alert(err.message); }
+}
+
+// ==========================================
+// EVENT WIRING
+// ==========================================
+function wireEvents() {
+  // Auth tabs
+  $('auth-tab-login')?.addEventListener('click', () => setAuthMode('login'));
+  $('auth-tab-register')?.addEventListener('click', () => setAuthMode('register'));
+  $('auth-form')?.addEventListener('submit', handleAuthSubmit);
+
+  // Global nav buttons (data-nav attribute)
+  document.addEventListener('click', (e) => {
+    const target = (e.target as HTMLElement).closest('[data-nav]') as HTMLElement | null;
+    if (target) {
+      e.preventDefault();
+      navigateTo(target.dataset.nav!);
+    }
+  });
+
+  // Admin nav (data-admin-tab)
+  document.addEventListener('click', (e) => {
+    const t = (e.target as HTMLElement).closest('[data-admin-tab]') as HTMLElement | null;
+    if (t) { e.preventDefault(); switchAdminTab(t.dataset.adminTab!); }
+  });
+
+  // Exam buttons
+  $('exam-prev')?.addEventListener('click', () => {
+    if (currentQuestionIndex > 0) { currentQuestionIndex--; renderQuestion(); }
+  });
+  $('exam-next')?.addEventListener('click', () => {
+    if (currentQuestionIndex < questions.length - 1) { currentQuestionIndex++; renderQuestion(); }
+    else if (confirm('This is the last question. Submit?')) submitExam(false);
+  });
+  $('exam-quit')?.addEventListener('click', async () => {
+    if (!confirm('Save & quit? You can resume this test later.')) return;
+    await saveSession();
+    if (examTimer) clearInterval(examTimer);
+    if (autoSaveTimer) clearInterval(autoSaveTimer);
+    showView('view-3');
+    loadTestDetail();
+  });
+
+  // Result buttons
+  $('result-view-ranking')?.addEventListener('click', () => {
+    showView('view-6'); loadTestRanking();
+  });
+
+  // Admin tests tab buttons
+  $('admin-new-test-btn')?.addEventListener('click', newTestForm);
+  $('admin-test-save')?.addEventListener('click', saveTest);
+  $('admin-test-cancel')?.addEventListener('click', () => $('admin-test-form-card')?.classList.add('hidden'));
+  $('csv-upload-btn')?.addEventListener('click', uploadCsv);
+  $('dl-csv-btn')?.addEventListener('click', downloadRankingsCsv);
+  $('ann-create')?.addEventListener('click', createAnnouncement);
+
+  // CSV file picker auto-fill
+  $('csv-file')?.addEventListener('change', (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const ta = $('csv-text') as HTMLTextAreaElement | null;
+      if (ta) ta.value = String(reader.result || '');
+    };
+    reader.readAsText(file);
+  });
+}
+
+// ==========================================
+// INIT
+// ==========================================
+function init() {
+  wireEvents();
+  startCountdownTicker();
+  const stored = getStoredUser();
+  const token = getToken();
+  if (stored && token) {
+    currentUser = stored;
+    if (stored.isAdmin) {
+      showView('view-9');
+      switchAdminTab('dashboard');
+    } else {
+      showView('view-1');
+      loadDashboard();
+    }
+  } else {
+    setAuthMode('login');
+    showView('view-0');
+  }
+}
+
+init();
