@@ -1133,6 +1133,15 @@ a:hover { text-decoration: underline; }
   .admin-main .btn-sm { padding: 7px 10px; font-size: 12px; }
   .admin-main .form-input, .admin-main .form-select { padding: 10px 12px; font-size: 14px; }
   .admin-main .icon-btn { padding: 4px 6px; font-size: 11px; margin-right: 1px; }
+  /* Tests tab page-header: title + "+ New Test" button stack cleanly */
+  .admin-main .page-header { gap: 8px; margin-bottom: 12px; }
+  .admin-main .page-header .btn { width: 100%; }
+  /* Test form save/cancel buttons stack on phones */
+  .admin-main .row.mt-16 { gap: 8px; }
+  .admin-main .row.mt-16 .btn { flex: 1; }
+  /* CSV upload + download cards: textarea + buttons fill width */
+  .admin-main .form-textarea { font-size: 12px; }
+  .admin-main code { font-size: 11px; word-break: break-word; }
 }
 
 .admin-table {
@@ -1162,7 +1171,45 @@ a:hover { text-decoration: underline; }
 }
 .admin-table tr:last-child td { border-bottom: none; }
 .admin-table tr:hover td { background: var(--blue-light); }
+
+/* Mobile-only stacked card list — replaces the wide table on phones so the
+   screen never gets "cut in half" by horizontal scrolling. */
+.admin-cards-mobile { display: none; }
+.admin-card-item {
+  border: 1px solid var(--blue-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--white);
+}
+.admin-card-item:last-child { margin-bottom: 0; }
+.admin-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.admin-card-row:last-child { margin-bottom: 0; }
+.admin-card-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-light);
+  flex-shrink: 0;
+  min-width: 70px;
+}
+.admin-card-value { font-size: 13px; color: var(--blue-deep); text-align: right; word-break: break-word; }
+.admin-card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--blue-border); }
+.admin-card-actions .icon-btn { margin-right: 0; flex: 1; min-width: 60px; text-align: center; }
+.admin-card-name { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--blue-deep); }
+.admin-card-sub { font-size: 12px; color: var(--text-mid); margin-top: 2px; }
+
 @media (max-width: 640px) {
+  /* Hide wide table on phones, show stacked cards instead */
+  .admin-table-desktop { display: none; }
+  .admin-cards-mobile { display: block; }
   .admin-table { font-size: 12px; min-width: 560px; }
   .admin-table th, .admin-table td { padding: 8px 10px; }
   .history-table { font-size: 12px; min-width: 480px; }
