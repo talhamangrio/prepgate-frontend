@@ -461,6 +461,13 @@ async function startExam(resume = false) {
   const nameEl = $('exam-test-name');
   if (nameEl) nameEl.textContent = t.name;
 
+  // Reset submit guard + button state for a fresh attempt
+  submitting = false;
+  const submitBtn = $('exam-submit') as HTMLButtonElement | null;
+  const nextBtn = $('exam-next') as HTMLButtonElement | null;
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '✓ Submit Test'; }
+  if (nextBtn) { nextBtn.disabled = false; }
+
   try {
     const data = await api(`/api/exam/tests/${t._id}/questions`);
     questions = data.questions || [];
@@ -499,6 +506,13 @@ function renderQuestion() {
   if (prog) prog.textContent = `Question ${currentQuestionIndex + 1} of ${questions.length}`;
   const fill = $('exam-progress-fill');
   if (fill) fill.style.width = `${((currentQuestionIndex + 1) / questions.length) * 100}%`;
+
+  // Last-question UX: hide Next, show Submit. Vice-versa on non-last questions.
+  const isLast = currentQuestionIndex >= questions.length - 1;
+  const nextBtn = $('exam-next');
+  const submitBtn = $('exam-submit');
+  if (nextBtn) nextBtn.classList.toggle('hidden', isLast);
+  if (submitBtn) submitBtn.classList.toggle('hidden', !isLast);
 
   const passage = $('exam-passage');
   if (passage) {
@@ -584,10 +598,28 @@ async function saveSession() {
   } catch {}
 }
 
+// Double-submit guard — prevents the "Alice clicked Submit twice and got
+// two result records" bug. Set synchronously before any await; cleared only
+// on view transition (so a stuck request can't accidentally re-enable).
+let submitting = false;
+
 async function submitExam(auto = false) {
+  // Double-submit protection: ignore any click that arrives while a submit
+  // is already in flight. This handles double-clicks, browser autofill
+  // re-fires, and the case where the user clicks Submit then Enter.
+  if (submitting) return;
+  if (!currentTest) return;
+  submitting = true;
+
+  // Disable both possible submit triggers immediately (visual feedback)
+  const submitBtn = $('exam-submit') as HTMLButtonElement | null;
+  const nextBtn = $('exam-next') as HTMLButtonElement | null;
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting…'; }
+  if (nextBtn) { nextBtn.disabled = true; }
+
   if (examTimer) clearInterval(examTimer);
   if (autoSaveTimer) clearInterval(autoSaveTimer);
-  if (!currentTest) return;
+
   try {
     if (!auto) await saveSession();
     const result = await api('/api/exam/submit', {
@@ -602,7 +634,12 @@ async function submitExam(auto = false) {
     lastRankingTestId = currentTest._id;
     showView('view-5');
     renderResult();
+    // submitting stays true — we're done, the exam view is gone.
   } catch (err: any) {
+    // Re-enable on error so the user can retry
+    submitting = false;
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '✓ Submit Test'; }
+    if (nextBtn) { nextBtn.disabled = false; }
     alert('Submit failed: ' + err.message);
     showView('view-3');
   }
@@ -613,7 +650,27 @@ function renderResult() {
   if (!el || !lastResult) return;
   const r = lastResult;
   const test = r.test || {};
-  let rank: number | null = null;
+
+  // "This attempt" vs "your stored best" hint.
+  // - isNewBest === true  → this attempt IS the new best (saved)
+  // - isNewBest === false → this attempt was worse than a previous best;
+  //                         we discarded it; show their stored best side-by-side
+  // - isNewBest === undefined → old backend without the field; no hint
+  let bestHint = '';
+  if (r.isNewBest === false && r.bestCorrectCount !== undefined) {
+    bestHint = `
+      <div class="result-best-hint" style="margin-top:16px; padding:12px 16px; background:rgba(255,209,102,0.12); border:1px solid rgba(255,209,102,0.4); border-radius:8px; font-size:13px; color:var(--blue-deep);">
+        <strong>⭐ Your best score for this test: ${r.bestCorrectCount}/${r.totalQuestions}</strong>
+        ${r.bestTimeTakenSeconds != null ? ` in ${formatDuration(r.bestTimeTakenSeconds)}` : ''}
+        — this attempt (${r.correctCount}/${r.totalQuestions}) was not better, so we kept your previous best on the ranking.
+      </div>`;
+  } else if (r.isNewBest === true && r.bestCorrectCount !== undefined && r.bestCorrectCount === r.correctCount) {
+    bestHint = `
+      <div class="result-best-hint" style="margin-top:16px; padding:12px 16px; background:rgba(76,175,80,0.12); border:1px solid rgba(76,175,80,0.4); border-radius:8px; font-size:13px; color:var(--blue-deep);">
+        <strong>🎉 New personal best!</strong> Your previous attempts (if any) have been replaced by this one.
+      </div>`;
+  }
+
   // Try to compute rank from /ranking
   api(`/api/exam/tests/${test._id || lastRankingTestId}/ranking`)
     .then(data => {
@@ -642,6 +699,7 @@ function renderResult() {
       </div>
     </div>
     <p style="margin-top:20px; opacity:0.85;">${escapeHtml(test.name || 'Test')} • ${escapeHtml(test.subject || '')}</p>
+    ${bestHint}
   `;
 }
 
@@ -1127,8 +1185,13 @@ function wireEvents() {
     if (currentQuestionIndex > 0) { currentQuestionIndex--; renderQuestion(); }
   });
   $('exam-next')?.addEventListener('click', () => {
+    // Next is hidden on the last question (Submit takes over), but guard anyway
     if (currentQuestionIndex < questions.length - 1) { currentQuestionIndex++; renderQuestion(); }
-    else if (confirm('This is the last question. Submit?')) submitExam(false);
+  });
+  $('exam-submit')?.addEventListener('click', () => {
+    // Submit button is only visible on the last question (toggled by renderQuestion).
+    // submitExam() has its own double-click guard via `submitting` flag.
+    submitExam(false);
   });
   $('exam-quit')?.addEventListener('click', async () => {
     if (!confirm('Save & quit? You can resume this test later.')) return;
