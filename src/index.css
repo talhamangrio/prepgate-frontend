@@ -1124,6 +1124,16 @@ a:hover { text-decoration: underline; }
 .admin-nav-item.active { background: rgba(255, 209, 102, 0.15); color: var(--gold); }
 .admin-main { padding: 32px; max-width: 1100px; }
 @media (max-width: 800px) { .admin-main { padding: 20px 16px; } }
+@media (max-width: 640px) {
+  .admin-main { padding: 16px 12px; }
+  .admin-main .card { padding: 14px; border-radius: var(--radius-md); }
+  .admin-main .page-title { font-size: 22px; }
+  .admin-main h3 { font-size: 15px; }
+  .admin-main .btn { padding: 9px 14px; font-size: 13px; }
+  .admin-main .btn-sm { padding: 7px 10px; font-size: 12px; }
+  .admin-main .form-input, .admin-main .form-select { padding: 10px 12px; font-size: 14px; }
+  .admin-main .icon-btn { padding: 4px 6px; font-size: 11px; margin-right: 1px; }
+}
 
 .admin-table {
   width: 100%;

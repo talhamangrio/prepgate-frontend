@@ -816,7 +816,7 @@ async function loadAdminTests() {
     const tbody = $('admin-tests-tbody');
     if (tbody) {
       if (!tests.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</td></tr>';
       } else {
         tbody.innerHTML = tests.map((t:any) => {
           const status = t.status || 'live';
@@ -825,7 +825,6 @@ async function loadAdminTests() {
           return `
             <tr>
               <td><strong>${escapeHtml(t.name)}</strong><br><span class="text-mut text-sm">${formatDateTime(t.scheduledAt) === '—' ? '' : '📅 ' + formatDateTime(t.scheduledAt)}</span></td>
-              <td>${escapeHtml(t.subject)}</td>
               <td><span class="mini-status ${statusCls}">${statusLabel}</span></td>
               <td>${formatDuration(t.durationSec)}</td>
               <td>${t.totalQuestions || 0}</td>
@@ -842,16 +841,12 @@ async function loadAdminTests() {
       tbody.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', () => deleteTest((b as HTMLElement).dataset.delete!)));
     }
     // Populate test selectors
-    const opts = tests.map((t:any) => `<option value="${escapeHtml(t._id)}">${escapeHtml(t.name)} (${escapeHtml(t.subject)})</option>`).join('');
+    const opts = tests.map((t:any) => `<option value="${escapeHtml(t._id)}">${escapeHtml(t.name)}</option>`).join('');
     const csvSel = $('csv-test-id'); if (csvSel) csvSel.innerHTML = opts;
     const dlSel = $('dl-test-id'); if (dlSel) dlSel.innerHTML = opts;
-    // Subject suggestions
-    const subjects = await api('/api/admin/subjects').catch(() => ({ subjects: [] }));
-    const dl = $('subject-suggestions');
-    if (dl) dl.innerHTML = (subjects.subjects || []).map((s:string) => `<option value="${escapeHtml(s)}">`).join('');
   } catch (err:any) {
     const tbody = $('admin-tests-tbody');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</td></tr>`;
   }
 }
 
@@ -859,7 +854,6 @@ let editingTestId: string | null = null;
 function newTestForm() {
   editingTestId = null;
   ($('tf-name') as HTMLInputElement).value = '';
-  ($('tf-subject') as HTMLInputElement).value = '';
   ($('tf-duration') as HTMLInputElement).value = '3600';
   ($('tf-status') as HTMLSelectElement).value = 'live';
   ($('tf-scheduled') as HTMLInputElement).value = '';
@@ -872,7 +866,6 @@ async function editTest(id: string) {
   if (!t) return;
   editingTestId = id;
   ($('tf-name') as HTMLInputElement).value = t.name || '';
-  ($('tf-subject') as HTMLInputElement).value = t.subject || '';
   ($('tf-duration') as HTMLInputElement).value = String(t.durationSec || 3600);
   ($('tf-status') as HTMLSelectElement).value = t.status || 'live';
   if (t.scheduledAt) {
@@ -889,14 +882,13 @@ async function editTest(id: string) {
 
 async function saveTest() {
   const name = ($('tf-name') as HTMLInputElement).value.trim();
-  const subject = ($('tf-subject') as HTMLInputElement).value.trim();
   const durationSec = parseInt(($('tf-duration') as HTMLInputElement).value, 10);
   const status = ($('tf-status') as HTMLSelectElement).value as 'live' | 'coming_soon';
   const scheduled = ($('tf-scheduled') as HTMLInputElement).value;
-  if (!name || !subject) { alert('Name and subject are required.'); return; }
+  if (!name) { alert('Test name is required.'); return; }
   if (!durationSec || durationSec < 60) { alert('Duration must be at least 60 seconds.'); return; }
   const body: any = {
-    name, subject, durationSec, status,
+    name, durationSec, status,
     scheduledAt: scheduled ? new Date(scheduled).toISOString() : null
   };
   try {
