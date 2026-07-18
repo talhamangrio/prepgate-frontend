@@ -149,7 +149,7 @@ function showView(id: string) {
 function navigateTo(target: string) {
   switch (target) {
     case 'dashboard':
-      if (currentUser?.isAdmin) { showView('view-9'); switchAdminTab('dashboard'); return; }
+      if (currentUser?.isAdmin || currentUser?.isModerator) { showView('view-9'); switchAdminTab('dashboard'); return; }
       showView('view-1'); loadDashboard();
       break;
     case 'tests':
@@ -161,10 +161,37 @@ function navigateTo(target: string) {
     case 'profile':
       showView('view-7'); loadProfile();
       break;
+    case 'developers':
+      showView('view-10'); loadDevelopers();
+      break;
+    case 'contact':
+      showView('view-11'); resetContactForm();
+      break;
     case 'logout':
       setToken(null); setUser(null);
       showView('view-0');
       break;
+  }
+}
+
+// ==========================================
+// 3-DOTS NAV MENU (dropdown open/close + outside-click dismiss)
+// ==========================================
+function closeAllNavMenus() {
+  $$('.nav-menu.open').forEach(m => {
+    m.classList.remove('open');
+    const btn = m.querySelector('.nav-menu-btn') as HTMLButtonElement | null;
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function toggleNavMenu(menu: HTMLElement) {
+  const isOpen = menu.classList.contains('open');
+  closeAllNavMenus();
+  if (!isOpen) {
+    menu.classList.add('open');
+    const btn = menu.querySelector('.nav-menu-btn') as HTMLButtonElement | null;
+    if (btn) btn.setAttribute('aria-expanded', 'true');
   }
 }
 
@@ -208,8 +235,16 @@ async function handleAuthSubmit(e: Event) {
     setUser(data.user);
     if (data.user?.isAdmin) {
       showView('view-9');
+      refreshAdminNavVisibility();
       switchAdminTab('dashboard');
       loadAdminDashboard();
+    } else if (data.user?.isModerator) {
+      // Moderator lands on the admin panel too, but only sees the tabs
+      // their permissions allow. They default to the first permitted tab.
+      showView('view-9');
+      refreshAdminNavVisibility();
+      const firstTab = firstPermittedTab(data.user.permissions);
+      switchAdminTab(firstTab);
     } else {
       showView('view-1');
       loadDashboard();
@@ -843,7 +878,60 @@ async function loadAnnouncements() {
 // ==========================================
 // ADMIN PANEL
 // ==========================================
+
+// The canonical order of admin tabs — used to pick a moderator's first
+// permitted tab and to keep nav ordering predictable.
+const ADMIN_TAB_ORDER = ['dashboard', 'tests', 'users', 'announcements', 'messages', 'moderators'] as const;
+type AdminTab = typeof ADMIN_TAB_ORDER[number];
+
+// Returns true if the current user can access a given admin tab.
+// Admins can access everything; moderators only what their permissions allow.
+// 'moderators' is admin-only (moderators cannot manage other moderators).
+function canAccessTab(tab: string): boolean {
+  if (!currentUser) return false;
+  if (currentUser.isAdmin) return true;
+  if (currentUser.isModerator) {
+    if (tab === 'moderators') return false; // admin-only
+    if (tab === 'logout') return true;
+    return !!(currentUser.permissions && (currentUser.permissions as any)[tab]);
+  }
+  return false;
+}
+
+function firstPermittedTab(perms: any): string {
+  if (!perms) return 'dashboard';
+  for (const t of ADMIN_TAB_ORDER) {
+    if (perms[t]) return t;
+  }
+  return 'dashboard'; // fallback (shouldn't happen for valid moderators)
+}
+
+// Refreshes the visibility of admin-nav items based on the current user's
+// permissions. Hides tabs the user can't access so they never see them.
+function refreshAdminNavVisibility() {
+  $$('.admin-nav-item').forEach(b => {
+    const tab = (b as HTMLElement).dataset.adminTab!;
+    if (tab === 'logout') return;
+    const allowed = canAccessTab(tab);
+    b.style.display = allowed ? '' : 'none';
+  });
+  $$('.admin-mobile-nav-item').forEach(b => {
+    const tab = (b as HTMLElement).dataset.adminTab!;
+    if (tab === 'logout') return;
+    const allowed = canAccessTab(tab);
+    b.style.display = allowed ? '' : 'none';
+  });
+}
+
 function switchAdminTab(tab: string) {
+  // Guard: if the current user can't access this tab (e.g. a moderator
+  // clicking a stale URL or a hidden nav item), bounce to their first
+  // permitted tab instead.
+  if (!canAccessTab(tab)) {
+    const fallback = currentUser?.isModerator ? firstPermittedTab(currentUser.permissions) : 'dashboard';
+    if (fallback !== tab) { switchAdminTab(fallback); return; }
+  }
+
   $$('.admin-nav-item').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.adminTab === tab));
   $$('.admin-mobile-nav-item').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.adminTab === tab));
   $$('.admin-tab-content').forEach(c => c.classList.add('hidden'));
@@ -853,6 +941,8 @@ function switchAdminTab(tab: string) {
   if (tab === 'tests') loadAdminTests();
   if (tab === 'users') loadAdminUsers();
   if (tab === 'announcements') loadAdminAnnouncements();
+  if (tab === 'messages') loadAdminMessages();
+  if (tab === 'moderators') loadAdminModerators();
   if (tab === 'logout') navigateTo('logout');
 }
 
@@ -1157,6 +1247,368 @@ async function createAnnouncement() {
 }
 
 // ==========================================
+// ADMIN: MESSAGES (Contact Us submissions)
+// ==========================================
+let msgFilter: 'all' | 'unread' = 'all';
+
+async function loadAdminMessages() {
+  const tbody = $('admin-msg-tbody');
+  const cardsEl = $('admin-msg-cards');
+  const statsEl = $('admin-msg-stats');
+  try {
+    const path = msgFilter === 'unread' ? '/api/admin/messages?unread=true' : '/api/admin/messages';
+    const data = await api(path);
+    const msgs = data.messages || [];
+    const unread = data.unreadCount || 0;
+
+    // Stats header + sidebar badge
+    if (statsEl) {
+      statsEl.innerHTML = `
+        <div class="stat-pill"><span class="stat-pill-num">${msgs.length}</span><span class="stat-pill-lbl">${msgFilter === 'unread' ? 'Unread' : 'Total shown'}</span></div>
+        <div class="stat-pill ${unread ? 'stat-pill-warn' : ''}"><span class="stat-pill-num">${unread}</span><span class="stat-pill-lbl">Unread</span></div>
+      `;
+    }
+    const badge = $('admin-msg-badge');
+    if (badge) {
+      if (unread > 0) {
+        badge.textContent = String(unread);
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    // Filter button states
+    $('msg-filter-all')?.classList.toggle('btn-primary', msgFilter === 'all');
+    $('msg-filter-all')?.classList.toggle('btn-ghost', msgFilter !== 'all');
+    $('msg-filter-unread')?.classList.toggle('btn-primary', msgFilter === 'unread');
+    $('msg-filter-unread')?.classList.toggle('btn-ghost', msgFilter !== 'unread');
+
+    if (!msgs.length) {
+      const empty = msgFilter === 'unread'
+        ? 'No unread messages — you are all caught up!'
+        : 'No messages yet. Submissions from the Contact Us form will appear here.';
+      if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-light);">${empty}</td></tr>`;
+      if (cardsEl) cardsEl.innerHTML = `<p style="text-align:center; padding:24px; color:var(--text-light);">${empty}</p>`;
+      return;
+    }
+
+    const renderRow = (m:any) => `
+      <tr class="${m.read ? '' : 'unread-row'}">
+        <td><strong>${escapeHtml(m.name)}</strong>${m.age ? `<br><span class="text-mut text-sm">Age ${m.age}</span>` : ''}</td>
+        <td>${m.email ? `<a href="mailto:${escapeHtml(m.email)}" style="color:var(--blue-mid);">${escapeHtml(m.email)}</a>` : '<span class="text-mut">—</span>'}</td>
+        <td>${m.subject ? escapeHtml(m.subject) : '<span class="text-mut">—</span>'}</td>
+        <td class="msg-cell">${escapeHtml(m.message).slice(0, 200)}${m.message.length > 200 ? '…' : ''}</td>
+        <td><span class="text-mut text-sm">${formatDateTime(m.createdAt)}</span></td>
+        <td>
+          <button class="icon-btn ${m.read ? 'warn' : 'success'}" data-msg-toggle="${escapeHtml(m._id)}">${m.read ? 'Mark unread' : 'Mark read'}</button>
+          <button class="icon-btn danger" data-msg-del="${escapeHtml(m._id)}">Delete</button>
+        </td>
+      </tr>`;
+
+    const renderCard = (m:any) => `
+      <div class="admin-card-item ${m.read ? '' : 'unread-card'}">
+        <div class="admin-card-row">
+          <div>
+            <div class="admin-card-name">${escapeHtml(m.name)}${m.age ? ` <span class="text-mut text-sm">· Age ${m.age}</span>` : ''}</div>
+            ${m.email ? `<div class="admin-card-sub"><a href="mailto:${escapeHtml(m.email)}" style="color:var(--blue-mid);">${escapeHtml(m.email)}</a></div>` : ''}
+          </div>
+          ${!m.read ? '<span class="mini-status live">New</span>' : ''}
+        </div>
+        ${m.subject ? `<div class="admin-card-row"><span class="admin-card-label">Subject</span><span class="admin-card-value">${escapeHtml(m.subject)}</span></div>` : ''}
+        <div class="admin-card-row"><span class="admin-card-label">Message</span><span class="admin-card-value" style="text-align:left;">${escapeHtml(m.message)}</span></div>
+        <div class="admin-card-row"><span class="admin-card-label">Received</span><span class="admin-card-value">${formatDateTime(m.createdAt)}</span></div>
+        <div class="admin-card-actions">
+          <button class="icon-btn ${m.read ? 'warn' : 'success'}" data-msg-toggle="${escapeHtml(m._id)}">${m.read ? '⊘ Mark unread' : '◉ Mark read'}</button>
+          <button class="icon-btn danger" data-msg-del="${escapeHtml(m._id)}">🗑 Delete</button>
+        </div>
+      </div>`;
+
+    if (tbody) tbody.innerHTML = msgs.map(renderRow).join('');
+    if (cardsEl) cardsEl.innerHTML = msgs.map(renderCard).join('');
+
+    [tbody, cardsEl].forEach(scope => {
+      if (!scope) return;
+      scope.querySelectorAll('[data-msg-toggle]').forEach(b => b.addEventListener('click', async () => {
+        const id = (b as HTMLElement).dataset.msgToggle!;
+        const m = msgs.find((x:any) => String(x._id) === id);
+        try {
+          await api(`/api/admin/messages/${id}`, { method: 'PATCH', body: JSON.stringify({ read: !m?.read }) });
+          loadAdminMessages();
+        } catch (e:any) { alert(e.message); }
+      }));
+      scope.querySelectorAll('[data-msg-del]').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('Delete this message? This cannot be undone.')) return;
+        const id = (b as HTMLElement).dataset.msgDel!;
+        try {
+          await api(`/api/admin/messages/${id}`, { method: 'DELETE' });
+          loadAdminMessages();
+        } catch (e:any) { alert(e.message); }
+      }));
+    });
+  } catch (err:any) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</td></tr>`;
+    if (cardsEl) cardsEl.innerHTML = `<p style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function markAllMessagesRead() {
+  try {
+    const data = await api('/api/admin/messages?unread=true');
+    const unread = data.messages || [];
+    for (const m of unread) {
+      await api(`/api/admin/messages/${m._id}`, { method: 'PATCH', body: JSON.stringify({ read: true }) });
+    }
+    loadAdminMessages();
+  } catch (e:any) { alert(e.message); }
+}
+
+// ==========================================
+// ADMIN: MODERATORS (admin-only CRUD)
+// ==========================================
+let editingModId: string | null = null;
+
+function newModeratorForm() {
+  editingModId = null;
+  ($('mf-name') as HTMLInputElement).value = '';
+  ($('mf-email') as HTMLInputElement).value = '';
+  ($('mf-password') as HTMLInputElement).value = '';
+  ($('mf-active') as HTMLSelectElement).value = 'true';
+  ['mf-perm-dashboard', 'mf-perm-tests', 'mf-perm-users', 'mf-perm-announcements', 'mf-perm-messages']
+    .forEach(id => { const el = $(id) as HTMLInputElement | null; if (el) el.checked = false; });
+  ($('admin-mod-form-title') as HTMLElement).textContent = 'Create New Moderator';
+  $('admin-mod-form-card')?.classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function cancelModeratorForm() {
+  editingModId = null;
+  $('admin-mod-form-card')?.classList.add('hidden');
+}
+
+async function editModerator(id: string) {
+  try {
+    const mods = await api('/api/admin/moderators');
+    const m = mods.find((x:any) => String(x._id) === id);
+    if (!m) return;
+    editingModId = id;
+    ($('mf-name') as HTMLInputElement).value = m.name || '';
+    ($('mf-email') as HTMLInputElement).value = m.email || '';
+    ($('mf-password') as HTMLInputElement).value = ''; // never pre-fill password
+    ($('mf-active') as HTMLSelectElement).value = m.active ? 'true' : 'false';
+    ($('mf-perm-dashboard') as HTMLInputElement).checked = !!m.permissions?.dashboard;
+    ($('mf-perm-tests') as HTMLInputElement).checked = !!m.permissions?.tests;
+    ($('mf-perm-users') as HTMLInputElement).checked = !!m.permissions?.users;
+    ($('mf-perm-announcements') as HTMLInputElement).checked = !!m.permissions?.announcements;
+    ($('mf-perm-messages') as HTMLInputElement).checked = !!m.permissions?.messages;
+    ($('admin-mod-form-title') as HTMLElement).textContent = `Edit: ${m.name}`;
+    $('admin-mod-form-card')?.classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (err:any) { alert(err.message); }
+}
+
+async function saveModerator() {
+  const name = ($('mf-name') as HTMLInputElement).value.trim();
+  const email = ($('mf-email') as HTMLInputElement).value.trim();
+  const password = ($('mf-password') as HTMLInputElement).value;
+  const active = ($('mf-active') as HTMLSelectElement).value === 'true';
+  const permissions = {
+    dashboard:     ($('mf-perm-dashboard') as HTMLInputElement).checked,
+    tests:         ($('mf-perm-tests') as HTMLInputElement).checked,
+    users:         ($('mf-perm-users') as HTMLInputElement).checked,
+    announcements: ($('mf-perm-announcements') as HTMLInputElement).checked,
+    messages:      ($('mf-perm-messages') as HTMLInputElement).checked
+  };
+
+  if (!name || !email) { alert('Name and email are required.'); return; }
+  if (!editingModId && !password) { alert('Password is required for new moderators.'); return; }
+  if (password && password.length < 6) { alert('Password must be at least 6 characters.'); return; }
+  if (!Object.values(permissions).some(Boolean)) {
+    if (!confirm('No permissions selected — this moderator will not be able to access any tab. Save anyway?')) return;
+  }
+
+  const body: any = { name, email, permissions, active };
+  if (password) body.password = password;
+
+  try {
+    if (editingModId) {
+      await api(`/api/admin/moderators/${editingModId}`, { method: 'PATCH', body: JSON.stringify(body) });
+    } else {
+      await api('/api/admin/moderators', { method: 'POST', body: JSON.stringify(body) });
+    }
+    cancelModeratorForm();
+    loadAdminModerators();
+  } catch (err:any) { alert('Save failed: ' + err.message); }
+}
+
+async function toggleModeratorActive(id: string, currentlyActive: boolean) {
+  try {
+    await api(`/api/admin/moderators/${id}`, { method: 'PATCH', body: JSON.stringify({ active: !currentlyActive }) });
+    loadAdminModerators();
+  } catch (err:any) { alert(err.message); }
+}
+
+async function deleteModerator(id: string) {
+  if (!confirm('Delete this moderator account? They will no longer be able to log in.')) return;
+  try {
+    await api(`/api/admin/moderators/${id}`, { method: 'DELETE' });
+    loadAdminModerators();
+  } catch (err:any) { alert(err.message); }
+}
+
+async function loadAdminModerators() {
+  // Moderator-tab is admin-only. If a moderator somehow lands here, show a
+  // notice instead of attempting the (admin-only) API call.
+  if (currentUser?.isModerator && !currentUser?.isAdmin) {
+    const notice = $('admin-mod-notice');
+    if (notice) {
+      notice.textContent = 'You do not have permission to manage moderators. Only the admin can create or edit moderator accounts.';
+      notice.classList.remove('hidden');
+    }
+    return;
+  }
+
+  const tbody = $('admin-mod-tbody');
+  const cardsEl = $('admin-mod-cards');
+  try {
+    const mods = await api('/api/admin/moderators');
+    if (!mods.length) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-light);">No moderators yet. Click "+ New Moderator" to create one.</td></tr>';
+      if (cardsEl) cardsEl.innerHTML = '<p style="text-align:center; padding:24px; color:var(--text-light);">No moderators yet.</p>';
+      return;
+    }
+
+    const permBadges = (p:any) => {
+      const list = [
+        p.dashboard && '📊',
+        p.tests && '📝',
+        p.users && '👥',
+        p.announcements && '📢',
+        p.messages && '💬'
+      ].filter(Boolean);
+      return list.length
+        ? `<div class="perm-badges">${list.map(b => `<span class="perm-badge">${b}</span>`).join('')}</div>`
+        : '<span class="text-mut text-sm">No permissions</span>';
+    };
+
+    if (tbody) {
+      tbody.innerHTML = mods.map((m:any) => `
+        <tr>
+          <td><strong>${escapeHtml(m.name)}</strong></td>
+          <td>${escapeHtml(m.email)}</td>
+          <td>${permBadges(m.permissions)}</td>
+          <td><span class="mini-status ${m.active ? 'live' : 'hidden'}">${m.active ? 'Active' : 'Disabled'}</span></td>
+          <td><span class="text-mut text-sm">${formatDate(m.createdAt)}</span></td>
+          <td>
+            <button class="icon-btn edit" data-mod-edit="${escapeHtml(m._id)}">Edit</button>
+            <button class="icon-btn ${m.active ? 'warn' : 'success'}" data-mod-toggle="${escapeHtml(m._id)}" data-active="${m.active}">${m.active ? 'Disable' : 'Enable'}</button>
+            <button class="icon-btn danger" data-mod-del="${escapeHtml(m._id)}">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+    if (cardsEl) {
+      cardsEl.innerHTML = mods.map((m:any) => `
+        <div class="admin-card-item">
+          <div class="admin-card-row">
+            <div>
+              <div class="admin-card-name">${escapeHtml(m.name)}</div>
+              <div class="admin-card-sub">${escapeHtml(m.email)}</div>
+            </div>
+            <span class="mini-status ${m.active ? 'live' : 'hidden'}">${m.active ? 'Active' : 'Disabled'}</span>
+          </div>
+          <div class="admin-card-row">
+            <span class="admin-card-label">Permissions</span>
+            <span class="admin-card-value" style="text-align:left;">${permBadges(m.permissions)}</span>
+          </div>
+          <div class="admin-card-row">
+            <span class="admin-card-label">Created</span>
+            <span class="admin-card-value">${formatDate(m.createdAt)}</span>
+          </div>
+          <div class="admin-card-actions">
+            <button class="icon-btn edit" data-mod-edit="${escapeHtml(m._id)}">✎ Edit</button>
+            <button class="icon-btn ${m.active ? 'warn' : 'success'}" data-mod-toggle="${escapeHtml(m._id)}" data-active="${m.active}">${m.active ? '⊘ Disable' : '◉ Enable'}</button>
+            <button class="icon-btn danger" data-mod-del="${escapeHtml(m._id)}">🗑 Delete</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    [tbody, cardsEl].forEach(scope => {
+      if (!scope) return;
+      scope.querySelectorAll('[data-mod-edit]').forEach(b => b.addEventListener('click', () => editModerator((b as HTMLElement).dataset.modEdit!)));
+      scope.querySelectorAll('[data-mod-toggle]').forEach(b => b.addEventListener('click', () => {
+        const id = (b as HTMLElement).dataset.modToggle!;
+        const active = (b as HTMLElement).dataset.active === 'true';
+        toggleModeratorActive(id, active);
+      }));
+      scope.querySelectorAll('[data-mod-del]').forEach(b => b.addEventListener('click', () => deleteModerator((b as HTMLElement).dataset.modDel!)));
+    });
+  } catch (err:any) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</td></tr>`;
+    if (cardsEl) cardsEl.innerHTML = `<p style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+// ==========================================
+// DEVELOPERS VIEW (Developed by Hack Eye)
+// ==========================================
+function loadDevelopers() {
+  const yearEl = $('developers-year');
+  if (yearEl) yearEl.textContent = String(new Date().getFullYear());
+}
+
+// ==========================================
+// CONTACT US FORM
+// ==========================================
+function resetContactForm() {
+  const form = $('contact-form') as HTMLFormElement | null;
+  if (form) form.reset();
+  const alertEl = $('contact-alert');
+  if (alertEl) { alertEl.classList.add('hidden'); alertEl.textContent = ''; }
+  const submit = $('contact-submit') as HTMLButtonElement | null;
+  if (submit) { submit.disabled = false; submit.textContent = '✉ Send Message'; }
+}
+
+async function handleContactSubmit(e: Event) {
+  e.preventDefault();
+  const name = ($('cf-name') as HTMLInputElement).value.trim();
+  const email = ($('cf-email') as HTMLInputElement).value.trim();
+  const age = ($('cf-age') as HTMLInputElement).value;
+  const subject = ($('cf-subject') as HTMLInputElement).value.trim();
+  const message = ($('cf-message') as HTMLTextAreaElement).value.trim();
+  const alertEl = $('contact-alert');
+  const submit = $('contact-submit') as HTMLButtonElement | null;
+
+  if (alertEl) { alertEl.classList.add('hidden'); alertEl.textContent = ''; }
+
+  if (!name || !message) {
+    if (alertEl) { alertEl.textContent = 'Name and message are required.'; alertEl.className = 'alert alert-error'; }
+    return;
+  }
+
+  if (submit) { submit.disabled = true; submit.textContent = 'Sending…'; }
+
+  try {
+    const body: any = { name, message };
+    if (email) body.email = email;
+    if (age) body.age = parseInt(age, 10);
+    if (subject) body.subject = subject;
+    const res = await api('/api/contact', { method: 'POST', body: JSON.stringify(body) });
+    if (alertEl) {
+      alertEl.textContent = '✓ ' + (res.message || 'Thanks! Your message has been sent.');
+      alertEl.className = 'alert alert-success';
+    }
+    const form = $('contact-form') as HTMLFormElement | null;
+    if (form) form.reset();
+  } catch (err:any) {
+    if (alertEl) { alertEl.textContent = err.message || 'Something went wrong. Please try again.'; alertEl.className = 'alert alert-error'; }
+  } finally {
+    if (submit) { submit.disabled = false; submit.textContent = '✉ Send Message'; }
+  }
+}
+
+// ==========================================
 // EVENT WIRING
 // ==========================================
 function wireEvents() {
@@ -1170,7 +1622,25 @@ function wireEvents() {
     const target = (e.target as HTMLElement).closest('[data-nav]') as HTMLElement | null;
     if (target) {
       e.preventDefault();
+      // Close any open nav menu after a nav click
+      closeAllNavMenus();
       navigateTo(target.dataset.nav!);
+      return;
+    }
+
+    // 3-dots nav menu button (open/close)
+    const menuBtn = (e.target as HTMLElement).closest('.nav-menu-btn') as HTMLElement | null;
+    if (menuBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const menu = menuBtn.closest('.nav-menu') as HTMLElement | null;
+      if (menu) toggleNavMenu(menu);
+      return;
+    }
+
+    // Outside click closes any open nav menu
+    if (!(e.target as HTMLElement).closest('.nav-menu')) {
+      closeAllNavMenus();
     }
   });
 
@@ -1215,6 +1685,20 @@ function wireEvents() {
   $('dl-csv-btn')?.addEventListener('click', downloadRankingsCsv);
   $('ann-create')?.addEventListener('click', createAnnouncement);
 
+  // Admin messages tab buttons
+  $('msg-filter-all')?.addEventListener('click', () => { msgFilter = 'all'; loadAdminMessages(); });
+  $('msg-filter-unread')?.addEventListener('click', () => { msgFilter = 'unread'; loadAdminMessages(); });
+  $('msg-mark-all-read')?.addEventListener('click', markAllMessagesRead);
+
+  // Admin moderators tab buttons
+  $('admin-new-mod-btn')?.addEventListener('click', newModeratorForm);
+  $('admin-mod-save')?.addEventListener('click', saveModerator);
+  $('admin-mod-cancel')?.addEventListener('click', cancelModeratorForm);
+
+  // Contact Us form
+  $('contact-form')?.addEventListener('submit', handleContactSubmit);
+  $('contact-reset')?.addEventListener('click', resetContactForm);
+
   // CSV file picker auto-fill
   $('csv-file')?.addEventListener('change', (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -1240,7 +1724,12 @@ function init() {
     currentUser = stored;
     if (stored.isAdmin) {
       showView('view-9');
+      refreshAdminNavVisibility();
       switchAdminTab('dashboard');
+    } else if (stored.isModerator) {
+      showView('view-9');
+      refreshAdminNavVisibility();
+      switchAdminTab(firstPermittedTab(stored.permissions));
     } else {
       showView('view-1');
       loadDashboard();
