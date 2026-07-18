@@ -814,31 +814,69 @@ async function loadAdminTests() {
   try {
     const tests = await api('/api/admin/tests');
     const tbody = $('admin-tests-tbody');
-    if (tbody) {
-      if (!tests.length) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</td></tr>';
-      } else {
-        tbody.innerHTML = tests.map((t:any) => {
+    const cardsEl = $('admin-tests-cards');
+    if (!tests.length) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</td></tr>';
+      if (cardsEl) cardsEl.innerHTML = '<p style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</p>';
+    } else {
+      const rows = tests.map((t:any) => {
+        const status = t.status || 'live';
+        const statusCls = !t.active ? 'hidden' : status;
+        const statusLabel = !t.active ? 'Hidden' : (status === 'live' ? 'Live' : 'Coming Soon');
+        const sched = formatDateTime(t.scheduledAt) === '—' ? '' : '📅 ' + formatDateTime(t.scheduledAt);
+        return `
+          <tr>
+            <td><strong>${escapeHtml(t.name)}</strong><br><span class="text-mut text-sm">${sched}</span></td>
+            <td><span class="mini-status ${statusCls}">${statusLabel}</span></td>
+            <td>${formatDuration(t.durationSec)}</td>
+            <td>${t.totalQuestions || 0}</td>
+            <td>
+              <button class="icon-btn edit" data-edit="${escapeHtml(t._id)}">Edit</button>
+              <button class="icon-btn ${t.active ? 'warn' : 'success'}" data-toggle="${escapeHtml(t._id)}">${t.active ? 'Hide' : 'Show'}</button>
+              <button class="icon-btn danger" data-delete="${escapeHtml(t._id)}">Delete</button>
+            </td>
+          </tr>`;
+      }).join('');
+      if (tbody) tbody.innerHTML = rows;
+      // Mobile cards (stacked, no horizontal scroll)
+      if (cardsEl) {
+        cardsEl.innerHTML = tests.map((t:any) => {
           const status = t.status || 'live';
           const statusCls = !t.active ? 'hidden' : status;
           const statusLabel = !t.active ? 'Hidden' : (status === 'live' ? 'Live' : 'Coming Soon');
+          const sched = formatDateTime(t.scheduledAt) === '—' ? '' : formatDateTime(t.scheduledAt);
           return `
-            <tr>
-              <td><strong>${escapeHtml(t.name)}</strong><br><span class="text-mut text-sm">${formatDateTime(t.scheduledAt) === '—' ? '' : '📅 ' + formatDateTime(t.scheduledAt)}</span></td>
-              <td><span class="mini-status ${statusCls}">${statusLabel}</span></td>
-              <td>${formatDuration(t.durationSec)}</td>
-              <td>${t.totalQuestions || 0}</td>
-              <td>
-                <button class="icon-btn edit" data-edit="${escapeHtml(t._id)}">Edit</button>
-                <button class="icon-btn ${t.active ? 'warn' : 'success'}" data-toggle="${escapeHtml(t._id)}">${t.active ? 'Hide' : 'Show'}</button>
-                <button class="icon-btn danger" data-delete="${escapeHtml(t._id)}">Delete</button>
-              </td>
-            </tr>`;
+            <div class="admin-card-item">
+              <div class="admin-card-row">
+                <div>
+                  <div class="admin-card-name">${escapeHtml(t.name)}</div>
+                  ${sched ? `<div class="admin-card-sub">📅 ${sched}</div>` : ''}
+                </div>
+                <span class="mini-status ${statusCls}">${statusLabel}</span>
+              </div>
+              <div class="admin-card-row">
+                <span class="admin-card-label">Duration</span>
+                <span class="admin-card-value">${formatDuration(t.durationSec)}</span>
+              </div>
+              <div class="admin-card-row">
+                <span class="admin-card-label">Questions</span>
+                <span class="admin-card-value">${t.totalQuestions || 0}</span>
+              </div>
+              <div class="admin-card-actions">
+                <button class="icon-btn edit" data-edit="${escapeHtml(t._id)}">✎ Edit</button>
+                <button class="icon-btn ${t.active ? 'warn' : 'success'}" data-toggle="${escapeHtml(t._id)}">${t.active ? '⊘ Hide' : '◉ Show'}</button>
+                <button class="icon-btn danger" data-delete="${escapeHtml(t._id)}">🗑 Delete</button>
+              </div>
+            </div>`;
         }).join('');
       }
-      tbody.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editTest((b as HTMLElement).dataset.edit!)));
-      tbody.querySelectorAll('[data-toggle]').forEach(b => b.addEventListener('click', () => toggleTestActive((b as HTMLElement).dataset.toggle!)));
-      tbody.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', () => deleteTest((b as HTMLElement).dataset.delete!)));
+      // Wire up both desktop + mobile buttons
+      [tbody, cardsEl].forEach(scope => {
+        if (!scope) return;
+        scope.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editTest((b as HTMLElement).dataset.edit!)));
+        scope.querySelectorAll('[data-toggle]').forEach(b => b.addEventListener('click', () => toggleTestActive((b as HTMLElement).dataset.toggle!)));
+        scope.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', () => deleteTest((b as HTMLElement).dataset.delete!)));
+      });
     }
     // Populate test selectors
     const opts = tests.map((t:any) => `<option value="${escapeHtml(t._id)}">${escapeHtml(t.name)}</option>`).join('');
@@ -846,7 +884,9 @@ async function loadAdminTests() {
     const dlSel = $('dl-test-id'); if (dlSel) dlSel.innerHTML = opts;
   } catch (err:any) {
     const tbody = $('admin-tests-tbody');
+    const cardsEl = $('admin-tests-cards');
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</td></tr>`;
+    if (cardsEl) cardsEl.innerHTML = `<p style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</p>`;
   }
 }
 
@@ -965,6 +1005,17 @@ async function loadAdminUsers() {
   try {
     const users = await api('/api/admin/users');
     const tbody = $('admin-users-tbody');
+    const cardsEl = $('admin-users-cards');
+
+    const empty = '<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--text-light);">No users yet.</td></tr>';
+    const emptyCard = '<p style="text-align:center; padding:24px; color:var(--text-light);">No users yet.</p>';
+
+    if (!users.length) {
+      if (tbody) tbody.innerHTML = empty;
+      if (cardsEl) cardsEl.innerHTML = emptyCard;
+      return;
+    }
+
     if (tbody) {
       tbody.innerHTML = users.map((u:any) => `
         <tr>
@@ -974,13 +1025,41 @@ async function loadAdminUsers() {
           <td>${u.totalAttempts || 0}</td>
           <td><button class="icon-btn danger" data-del-user="${escapeHtml(u._id)}">Delete</button></td>
         </tr>
-      `).join('') || '<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--text-light);">No users yet.</td></tr>';
-      tbody.querySelectorAll('[data-del-user]').forEach(b => b.addEventListener('click', async () => {
+      `).join('');
+    }
+    if (cardsEl) {
+      cardsEl.innerHTML = users.map((u:any) => `
+        <div class="admin-card-item">
+          <div class="admin-card-row">
+            <div>
+              <div class="admin-card-name">${escapeHtml(u.name)}</div>
+              <div class="admin-card-sub">${escapeHtml(u.email)}</div>
+            </div>
+          </div>
+          <div class="admin-card-row">
+            <span class="admin-card-label">Joined</span>
+            <span class="admin-card-value">${formatDate(u.createdAt)}</span>
+          </div>
+          <div class="admin-card-row">
+            <span class="admin-card-label">Attempts</span>
+            <span class="admin-card-value">${u.totalAttempts || 0}</span>
+          </div>
+          <div class="admin-card-actions">
+            <button class="icon-btn danger" data-del-user="${escapeHtml(u._id)}">🗑 Delete</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Wire up both desktop + mobile delete buttons
+    [tbody, cardsEl].forEach(scope => {
+      if (!scope) return;
+      scope.querySelectorAll('[data-del-user]').forEach(b => b.addEventListener('click', async () => {
         if (!confirm('Delete this user and all their attempts?')) return;
         try { await api(`/api/admin/users/${(b as HTMLElement).dataset.delUser}`, { method: 'DELETE' }); loadAdminUsers(); }
         catch (e:any) { alert(e.message); }
       }));
-    }
+    });
   } catch (err:any) { alert(err.message); }
 }
 
