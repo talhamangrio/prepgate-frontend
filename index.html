@@ -314,28 +314,23 @@
         <main class="admin-main">
           <!-- Admin: Dashboard -->
           <div id="admin-tab-dashboard" class="admin-tab-content">
-            <h1 class="page-title mb-24">Dashboard</h1>
+            <h1 class="page-title mb-16">Dashboard</h1>
             <div class="stats-row" id="admin-stats"></div>
           </div>
 
           <!-- Admin: Tests -->
           <div id="admin-tab-tests" class="admin-tab-content hidden">
-            <div class="row between mb-24">
+            <div class="page-header mb-16">
               <h1 class="page-title">Tests</h1>
               <button class="btn btn-primary" id="admin-new-test-btn">+ New Test</button>
             </div>
             <div id="admin-tests-alert"></div>
-            <div class="card mb-24 hidden" id="admin-test-form-card">
+            <div class="card mb-16 hidden" id="admin-test-form-card">
               <h3 id="admin-test-form-title" style="margin-bottom:16px;">Create New Test</h3>
               <div class="grid-2">
                 <div class="form-group">
                   <label class="form-label">Test Name</label>
                   <input id="tf-name" class="form-input" placeholder="e.g. MDCAT Biology Mock 1" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Subject (e.g. MDCAT, ECAT, USAT)</label>
-                  <input id="tf-subject" class="form-input" placeholder="MDCAT" list="subject-suggestions" />
-                  <datalist id="subject-suggestions"></datalist>
                 </div>
                 <div class="form-group">
                   <label class="form-label">Duration (seconds, min 60)</label>
@@ -358,14 +353,13 @@
                 <button class="btn btn-ghost" id="admin-test-cancel">Cancel</button>
               </div>
             </div>
-            <div class="card mb-24">
+            <div class="card mb-16">
               <h3 style="margin-bottom:12px;">All Tests</h3>
-              <div style="overflow-x:auto;">
+              <div class="admin-table-wrap">
                 <table class="admin-table" id="admin-tests-table">
                   <thead>
                     <tr>
                       <th>Name</th>
-                      <th>Subject</th>
                       <th>Status</th>
                       <th>Duration</th>
                       <th>Questions</th>
@@ -376,7 +370,7 @@
                 </table>
               </div>
             </div>
-            <div class="card mb-24">
+            <div class="card mb-16">
               <h3 style="margin-bottom:12px;">Upload Questions (CSV)</h3>
               <p class="text-mut text-sm mb-16">CSV header: <code>question,A,B,C,D,correct,passage,explanation</code>. Upload <strong>replaces</strong> all existing questions for the selected test.</p>
               <div class="form-group">
@@ -407,9 +401,9 @@
 
           <!-- Admin: Users -->
           <div id="admin-tab-users" class="admin-tab-content hidden">
-            <h1 class="page-title mb-24">Users</h1>
+            <h1 class="page-title mb-16">Users</h1>
             <div class="card">
-              <div style="overflow-x:auto;">
+              <div class="admin-table-wrap">
                 <table class="admin-table">
                   <thead>
                     <tr><th>Name</th><th>Email</th><th>Joined</th><th>Attempts</th><th>Actions</th></tr>
@@ -422,8 +416,8 @@
 
           <!-- Admin: Announcements -->
           <div id="admin-tab-announcements" class="admin-tab-content hidden">
-            <h1 class="page-title mb-24">Announcements</h1>
-            <div class="card mb-24">
+            <h1 class="page-title mb-16">Announcements</h1>
+            <div class="card mb-16">
               <div class="form-group">
                 <label class="form-label">Title</label>
                 <input id="ann-title" class="form-input" />
