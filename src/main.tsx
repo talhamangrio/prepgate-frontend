@@ -787,6 +787,7 @@ async function loadAnnouncements() {
 // ==========================================
 function switchAdminTab(tab: string) {
   $$('.admin-nav-item').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.adminTab === tab));
+  $$('.admin-mobile-nav-item').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.adminTab === tab));
   $$('.admin-tab-content').forEach(c => c.classList.add('hidden'));
   const el = $(`admin-tab-${tab}`);
   if (el) el.classList.remove('hidden');
