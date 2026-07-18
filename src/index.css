@@ -202,11 +202,11 @@ a:hover { text-decoration: underline; }
   .nav-btn.danger { padding-left: 8px; padding-right: 8px; }
 }
 @media (max-width: 400px) {
-  /* Very narrow phones: shorten labels to fit without clipping */
+  /* Very narrow phones: shorten labels to fit without clipping.
+     Profile + Logout are now in the 3-dots menu, so only the inline
+     section buttons remain and may need shortening. */
   .nav-btn[data-nav="announcements"] { font-size: 0; padding: 6px; }
   .nav-btn[data-nav="announcements"]::before { content: 'News'; font-size: 12px; font-weight: 600; }
-  .nav-btn[data-nav="profile"] { font-size: 0; padding: 6px; }
-  .nav-btn[data-nav="profile"]::before { content: 'You'; font-size: 12px; font-weight: 600; }
   .nav-btn[data-nav="dashboard"]::before { content: 'Home'; }
   .nav-btn[data-nav="dashboard"] { font-size: 0; padding: 6px; }
   .nav-btn[data-nav="dashboard"]::before { content: 'Home'; font-size: 12px; font-weight: 600; }
@@ -1320,3 +1320,354 @@ a:hover { text-decoration: underline; }
 .modal h3 { font-family: var(--font-display); font-size: 18px; margin-bottom: 8px; color: var(--blue-deep); }
 .modal p { color: var(--text-mid); font-size: 14px; margin-bottom: 20px; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* =========================================
+   20. 3-DOTS NAV MENU (profile / contact / developers / logout)
+   ========================================= */
+.nav-menu { position: relative; display: inline-block; }
+.nav-menu-btn {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-mid);
+  font-size: 22px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  letter-spacing: -0.05em;
+}
+.nav-menu-btn:hover { background: var(--blue-light); color: var(--blue-deep); }
+.nav-menu.open .nav-menu-btn { background: var(--blue-deep); color: var(--white); }
+
+.nav-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--white);
+  border: 1px solid var(--blue-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+  z-index: 80;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px) scale(0.97);
+  transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
+}
+.nav-menu.open .nav-menu-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+.nav-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dark);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.nav-menu-item:hover { background: var(--blue-light); color: var(--blue-deep); }
+.nav-menu-item.danger { color: var(--red); }
+.nav-menu-item.danger:hover { background: var(--red-light); }
+
+@media (max-width: 640px) {
+  .nav-menu-btn { width: 34px; height: 34px; font-size: 20px; }
+  .nav-menu-dropdown { min-width: 180px; right: -4px; }
+}
+@media (max-width: 360px) {
+  .nav-menu-dropdown { min-width: 160px; right: -8px; }
+}
+
+/* =========================================
+   21. DEVELOPERS VIEW (Developed by Hack Eye)
+   ========================================= */
+.developers-hero {
+  position: relative;
+  margin-top: 24px;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  isolation: isolate;
+}
+.developers-hero-bg {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 209, 102, 0.35), transparent 55%),
+    radial-gradient(circle at 80% 80%, rgba(124, 58, 237, 0.30), transparent 55%),
+    linear-gradient(135deg, var(--blue-darkest) 0%, var(--blue-deep) 60%, var(--blue-mid) 100%);
+  z-index: -1;
+}
+.developers-card {
+  position: relative;
+  z-index: 1;
+  padding: 56px 40px;
+  text-align: center;
+  color: var(--white);
+}
+.developers-mark {
+  width: 88px; height: 88px;
+  margin: 0 auto 24px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--gold), #F4C06F);
+  color: var(--blue-darkest);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 40px rgba(255, 209, 102, 0.45);
+}
+.developers-card .hero-tag {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  padding: 4px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 12px;
+}
+.developers-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 56px;
+  line-height: 1.05;
+  color: var(--white);
+  margin: 0 0 12px;
+  background: linear-gradient(135deg, var(--white) 0%, var(--gold) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.developers-tagline {
+  max-width: 620px;
+  margin: 0 auto 32px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.85);
+}
+.developers-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  max-width: 880px;
+  margin: 0 auto 32px;
+}
+.developers-meta-item {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  padding: 18px 16px;
+  text-align: left;
+}
+.developers-meta-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+.developers-meta-value {
+  display: block;
+  font-size: 14px;
+  color: var(--white);
+  font-weight: 500;
+  line-height: 1.4;
+}
+.developers-cta {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.developers-footer-note {
+  text-align: center;
+  margin-top: 24px;
+  padding: 16px;
+  color: var(--text-light);
+  font-size: 13px;
+}
+.developers-footer-note strong { color: var(--blue-deep); }
+
+@media (max-width: 800px) {
+  .developers-card { padding: 40px 24px; }
+  .developers-title { font-size: 42px; }
+  .developers-meta { grid-template-columns: 1fr; gap: 10px; }
+  .developers-tagline { font-size: 15px; }
+}
+@media (max-width: 480px) {
+  .developers-card { padding: 32px 18px; }
+  .developers-title { font-size: 32px; }
+  .developers-mark { width: 72px; height: 72px; font-size: 26px; margin-bottom: 18px; }
+  .developers-tagline { font-size: 14px; margin-bottom: 24px; }
+  .developers-cta .btn { width: 100%; }
+}
+
+/* =========================================
+   22. CONTACT US FORM
+   ========================================= */
+.contact-form-card { max-width: 760px; }
+.contact-form .req { color: var(--red); margin-left: 2px; }
+.contact-form .form-textarea { min-height: 140px; resize: vertical; }
+#contact-alert { margin-top: 0; }
+
+@media (max-width: 640px) {
+  .contact-form-card { padding: 18px; }
+  .contact-form .btn-lg { width: 100%; }
+  .contact-form .row { gap: 8px; }
+  .contact-form .btn-ghost { flex: 1; }
+}
+
+/* =========================================
+   23. ADMIN: MESSAGES TAB
+   ========================================= */
+.admin-msg-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.stat-pill {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: var(--blue-page);
+  border: 1px solid var(--blue-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  min-width: 70px;
+}
+.stat-pill-num {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--blue-deep);
+  line-height: 1.1;
+}
+.stat-pill-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-light);
+}
+.stat-pill-warn {
+  background: var(--gold-light);
+  border-color: var(--gold);
+}
+.stat-pill-warn .stat-pill-num { color: var(--gold-deep); }
+
+.admin-msg-filter-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+#admin-msg-table .msg-cell {
+  max-width: 320px;
+  font-size: 13px;
+  color: var(--text-mid);
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-word;
+}
+#admin-msg-table .unread-row td { background: rgba(255, 209, 102, 0.08); }
+#admin-msg-table .unread-row td:first-child { border-left: 3px solid var(--gold); }
+
+.admin-card-item.unread-card {
+  border-color: var(--gold);
+  background: linear-gradient(180deg, var(--gold-light) 0%, var(--white) 60%);
+}
+
+/* =========================================
+   24. ADMIN: MODERATORS TAB
+   ========================================= */
+.perm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.perm-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--blue-page);
+  border: 1px solid var(--blue-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-dark);
+  transition: background 0.15s, border-color 0.15s;
+  user-select: none;
+}
+.perm-check:hover { background: var(--blue-light); border-color: var(--blue-mid); }
+.perm-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--blue-mid);
+  cursor: pointer;
+}
+.perm-check:has(input:checked) {
+  background: var(--gold-light);
+  border-color: var(--gold);
+  color: var(--blue-deep);
+}
+
+.perm-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.perm-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border-radius: var(--radius-xs);
+  background: var(--blue-light);
+  font-size: 13px;
+}
+
+/* Sidebar/mobile nav badge for unread messages */
+.admin-nav-badge {
+  display: inline-block;
+  background: var(--gold);
+  color: var(--blue-darkest);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  margin-left: 6px;
+  min-width: 18px;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .perm-grid { grid-template-columns: 1fr 1fr; }
+  .admin-msg-stats { width: 100%; justify-content: flex-start; }
+  .stat-pill { flex: 1; min-width: 90px; }
+  #admin-msg-table .msg-cell { max-width: 100%; }
+}
+@media (max-width: 400px) {
+  .perm-grid { grid-template-columns: 1fr; }
+}
