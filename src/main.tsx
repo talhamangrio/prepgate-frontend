@@ -120,7 +120,14 @@ async function api(path: string, opts: RequestInit = {}): Promise<any> {
   const ct = res.headers.get('content-type') || '';
   if (ct.includes('application/json')) {
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+    if (!res.ok) {
+      // Preserve extra fields (e.g. `hidden: true` on the ranking
+      // endpoint) so callers can branch on them.
+      const err: any = new Error(data.message || `HTTP ${res.status}`);
+      Object.assign(err, data);
+      err.status = res.status;
+      throw err;
+    }
     return data;
   }
   if (ct.includes('text/csv')) {
@@ -427,15 +434,38 @@ function startCountdownTicker() {
 // ==========================================
 // TEST DETAIL
 // ==========================================
+// Per-page-session guard so the organiser popup is only shown once per
+// visit to the test detail page (not on every "Start Test" retry).
+let organiserModalShownThisSession = false;
+
 async function loadTestDetail() {
   if (!currentTest) return;
   const c = $('test-detail-card');
   if (!c) return;
   const t = currentTest;
   const status = t.status || 'live';
+  // Reset the per-session popup guard whenever we (re)load this test's
+  // detail page — so a student returning to this page later sees the
+  // popup again, but a quick retry of "Start Test" after Cancel doesn't.
+  organiserModalShownThisSession = false;
+
+  // Live re-fetch so we pick up admin edits (showRanking / organiser)
+  // without forcing the student to refresh the whole SPA.
+  try {
+    const fresh = await api(`/api/exam/tests/${t._id}`);
+    if (fresh && fresh._id) {
+      Object.assign(currentTest, fresh);
+    }
+  } catch {}
+
+  const tt = currentTest;
+  const showRanking = tt.showRanking !== false;
+  const org = tt.organiser || {};
+  const showOrganiser = org.show === true && !!(org.name && org.name.trim());
+
   let resumeBlock = '';
   try {
-    const session = await api(`/api/exam/session/${t._id}`);
+    const session = await api(`/api/exam/session/${tt._id}`);
     if (session) {
       resumeBlock = `
         <div class="alert alert-info mt-16">
@@ -446,45 +476,143 @@ async function loadTestDetail() {
     }
   } catch {}
 
+  // Organiser banner — only rendered if showOrganiser is true. Appears
+  // above the title so it's the first thing the student sees.
+  const organiserBanner = showOrganiser ? renderOrganiserBanner(org) : '';
+
   c.innerHTML = `
-    <span class="test-subject">${escapeHtml(t.subject)}</span>
-    <h1 class="page-title mt-8" style="margin-top:12px;">${escapeHtml(t.name)}</h1>
+    ${organiserBanner}
+    <span class="test-subject">${escapeHtml(tt.subject)}</span>
+    <h1 class="page-title mt-8" style="margin-top:12px;">${escapeHtml(tt.name)}</h1>
     <div class="status-badge ${status === 'live' ? 'live' : 'coming-soon'}" style="margin:8px 0;">
       <span class="dot"></span>${status === 'live' ? 'Live' : 'Coming Soon'}
     </div>
     <div class="stats-row mt-16">
-      <div class="stat-card"><div class="stat-label">Duration</div><div class="stat-value">${formatDuration(t.durationSec)}</div></div>
-      <div class="stat-card"><div class="stat-label">Questions</div><div class="stat-value">${t.totalQuestions || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Duration</div><div class="stat-value">${formatDuration(tt.durationSec)}</div></div>
+      <div class="stat-card"><div class="stat-label">Questions</div><div class="stat-value">${tt.totalQuestions || 0}</div></div>
     </div>
     ${status === 'coming_soon' ? `
       <div class="test-countdown mt-16">
         <span class="countdown-label">Starts in</span>
-        <span class="countdown-value" data-countdown="${escapeHtml(t.scheduledAt || '')}">${formatCountdown(t.scheduledAt)}</span>
-        <div style="font-size:11px;opacity:0.7;margin-top:2px;">on ${formatDateTime(t.scheduledAt)}</div>
+        <span class="countdown-value" data-countdown="${escapeHtml(tt.scheduledAt || '')}">${formatCountdown(tt.scheduledAt)}</span>
+        <div style="font-size:11px;opacity:0.7;margin-top:2px;">on ${formatDateTime(tt.scheduledAt)}</div>
       </div>
       <p class="text-mut mt-16">This test isn't live yet. Check back soon!</p>
     ` : ''}
     ${status === 'live' ? `
       <div class="row mt-24">
         <button class="btn btn-gold btn-lg" id="start-test-btn">Start Test →</button>
-        <button class="btn btn-ghost" id="view-ranking-btn">View Ranking</button>
+        ${showRanking
+          ? '<button class="btn btn-ghost" id="view-ranking-btn">View Ranking</button>'
+          : '<span class="text-mut text-sm" style="align-self:center;">Ranking is hidden for this test.</span>'}
       </div>
     ` : ''}
     ${resumeBlock}
   `;
 
-  $('start-test-btn')?.addEventListener('click', () => { showView('view-4'); startExam(); });
+  // Start Test → if organiser.show is on, surface the acknowledgement
+  // modal first; only proceed to the exam engine after the student
+  // clicks "Okay, Start Test". Otherwise start immediately.
+  $('start-test-btn')?.addEventListener('click', () => {
+    if (showOrganiser && !organiserModalShownThisSession) {
+      openOrganiserModal(org, () => { showView('view-4'); startExam(); });
+    } else {
+      showView('view-4');
+      startExam();
+    }
+  });
   $('view-ranking-btn')?.addEventListener('click', () => {
-    lastRankingTestId = t._id;
+    lastRankingTestId = tt._id;
     showView('view-6');
     loadTestRanking();
   });
-  $('resume-btn')?.addEventListener('click', () => { showView('view-4'); startExam(true); });
+  $('resume-btn')?.addEventListener('click', () => {
+    if (showOrganiser && !organiserModalShownThisSession) {
+      openOrganiserModal(org, () => { showView('view-4'); startExam(true); });
+    } else {
+      showView('view-4');
+      startExam(true);
+    }
+  });
   $('restart-btn')?.addEventListener('click', async () => {
-    try { await api(`/api/exam/session/${t._id}`, { method: 'DELETE' }); } catch {}
-    showView('view-4'); startExam();
+    try { await api(`/api/exam/session/${tt._id}`, { method: 'DELETE' }); } catch {}
+    if (showOrganiser && !organiserModalShownThisSession) {
+      openOrganiserModal(org, () => { showView('view-4'); startExam(); });
+    } else {
+      showView('view-4');
+      startExam();
+    }
   });
   startCountdownTicker();
+}
+
+// Render the organiser banner (the always-visible block on the test
+// detail page). Renders a circular logo (image if logoUrl provided,
+// otherwise the first letter of the organiser name on a gold disc),
+// the name, and an optional tagline.
+function renderOrganiserBanner(org: any) {
+  const name = escapeHtml(org.name || '');
+  const tagline = org.tagline ? escapeHtml(org.tagline) : '';
+  const initial = (org.name || '?').charAt(0).toUpperCase();
+  const logoHtml = org.logoUrl
+    ? `<img src="${escapeHtml(org.logoUrl)}" alt="${name} logo" onerror="this.style.display='none';this.parentElement.textContent='${initial}';" />`
+    : initial;
+  return `
+    <div class="organiser-banner" role="note" aria-label="Test organiser">
+      <div class="organiser-banner-logo">${logoHtml}</div>
+      <div class="organiser-banner-text">
+        <span class="organiser-banner-eyebrow">Conducted by</span>
+        <span class="organiser-banner-name">${name}</span>
+        ${tagline ? `<span class="organiser-banner-tagline">${tagline}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+// Open the organiser acknowledgement modal. `onConfirm` is invoked when
+// the student clicks "Okay, Start Test →". Clicking "Cancel" or the
+// backdrop dismisses without proceeding. Sets organiserModalShownThisSession
+// to true so a re-click of Start Test within the same page view skips
+// the popup (student already acknowledged).
+function openOrganiserModal(org: any, onConfirm: () => void) {
+  const modal = $('organiser-modal');
+  if (!modal) { onConfirm(); return; }
+  const name = escapeHtml(org.name || '');
+  const tagline = org.tagline ? escapeHtml(org.tagline) : '';
+  const initial = (org.name || '?').charAt(0).toUpperCase();
+  // Populate
+  const nameEl = $('organiser-modal-name'); if (nameEl) nameEl.textContent = org.name || '—';
+  const tagEl = $('organiser-modal-tagline'); if (tagEl) tagEl.textContent = tagline;
+  const logoEl = $('organiser-modal-logo') as HTMLElement | null;
+  if (logoEl) {
+    if (org.logoUrl) {
+      logoEl.innerHTML = `<img src="${escapeHtml(org.logoUrl)}" alt="${name} logo" onerror="this.style.display='none';this.parentElement.textContent='${initial}';" />`;
+    } else {
+      logoEl.textContent = initial;
+    }
+  }
+  modal.classList.remove('hidden');
+
+  const okay = $('organiser-modal-okay') as HTMLButtonElement | null;
+  const cancel = $('organiser-modal-cancel') as HTMLButtonElement | null;
+
+  const close = () => {
+    modal.classList.add('hidden');
+    okay?.removeEventListener('click', onOkay);
+    cancel?.removeEventListener('click', onCancel);
+    modal.removeEventListener('click', onBackdrop);
+  };
+  function onOkay() {
+    organiserModalShownThisSession = true;
+    close();
+    onConfirm();
+  }
+  function onCancel() { close(); }
+  function onBackdrop(e: MouseEvent) {
+    if (e.target === modal) close();
+  }
+  okay?.addEventListener('click', onOkay);
+  cancel?.addEventListener('click', onCancel);
+  modal.addEventListener('click', onBackdrop);
 }
 
 // ==========================================
@@ -706,16 +834,22 @@ function renderResult() {
       </div>`;
   }
 
-  // Try to compute rank from /ranking
-  api(`/api/exam/tests/${test._id || lastRankingTestId}/ranking`)
-    .then(data => {
-      const me = data.ranking?.find((row:any) => String(row.userId) === String(currentUser?.id));
-      if (me) {
-        const rankEl = $('result-rank');
-        if (rankEl) rankEl.textContent = `#${me.rank}`;
-      }
-    })
-    .catch(() => {});
+  // Try to compute rank from /ranking — skip entirely when the admin
+  // has hidden ranking for this test (showRanking === false).
+  const showRanking = !currentTest || currentTest.showRanking !== false;
+  const vr = $('result-view-ranking');
+  if (vr) vr.style.display = showRanking ? '' : 'none';
+  if (showRanking) {
+    api(`/api/exam/tests/${test._id || lastRankingTestId}/ranking`)
+      .then(data => {
+        const me = data.ranking?.find((row:any) => String(row.userId) === String(currentUser?.id));
+        if (me) {
+          const rankEl = $('result-rank');
+          if (rankEl) rankEl.textContent = `#${me.rank}`;
+        }
+      })
+      .catch(() => {});
+  }
 
   el.innerHTML = `
     <div class="result-score">${r.correctCount}<span class="total"> / ${r.totalQuestions}</span></div>
@@ -729,8 +863,8 @@ function renderResult() {
         <span class="meta-label">Time Taken</span>
       </div>
       <div class="meta-item">
-        <span class="meta-value" id="result-rank">—</span>
-        <span class="meta-label">Your Rank</span>
+        <span class="meta-value" id="result-rank">${showRanking ? '—' : '🔒'}</span>
+        <span class="meta-label">${showRanking ? 'Your Rank' : 'Rank Hidden'}</span>
       </div>
     </div>
     <p style="margin-top:20px; opacity:0.85;">${escapeHtml(test.name || 'Test')} • ${escapeHtml(test.subject || '')}</p>
@@ -792,6 +926,13 @@ async function loadTestRanking() {
       }).join('');
     }
   } catch (err:any) {
+    // Handle "ranking hidden" gracefully — the API returns 403 with
+    // { hidden: true } when the admin has set showRanking=false.
+    if (err && err.hidden) {
+      if (podium) podium.innerHTML = '';
+      if (list) list.innerHTML = '<div class="empty-state"><div class="emoji">🔒</div><h3>Ranking is hidden</h3><p>The organiser has chosen not to show rankings for this test.</p></div>';
+      return;
+    }
     if (podium) podium.innerHTML = `<div class="empty-state"><div class="emoji">⚠️</div><h3>Failed to load</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
 }
@@ -964,7 +1105,7 @@ async function loadAdminTests() {
     const tbody = $('admin-tests-tbody');
     const cardsEl = $('admin-tests-cards');
     if (!tests.length) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</td></tr>';
       if (cardsEl) cardsEl.innerHTML = '<p style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</p>';
     } else {
       const rows = tests.map((t:any) => {
@@ -972,10 +1113,20 @@ async function loadAdminTests() {
         const statusCls = !t.active ? 'hidden' : status;
         const statusLabel = !t.active ? 'Hidden' : (status === 'live' ? 'Live' : 'Coming Soon');
         const sched = formatDateTime(t.scheduledAt) === '—' ? '' : '📅 ' + formatDateTime(t.scheduledAt);
+        // Ranking + organiser indicators
+        const rankingChip = t.showRanking === false
+          ? '<span class="indicator-chip off">Off</span>'
+          : '<span class="indicator-chip on">On</span>';
+        const org = t.organiser || {};
+        const organiserChip = (org.show === true && org.name)
+          ? `<span class="indicator-chip org" title="${escapeHtml(org.tagline || '')}">${escapeHtml(org.name)}</span>`
+          : '<span class="indicator-chip off">—</span>';
         return `
           <tr>
             <td><strong>${escapeHtml(t.name)}</strong><br><span class="text-mut text-sm">${sched}</span></td>
             <td><span class="mini-status ${statusCls}">${statusLabel}</span></td>
+            <td>${rankingChip}</td>
+            <td>${organiserChip}</td>
             <td>${formatDuration(t.durationSec)}</td>
             <td>${t.totalQuestions || 0}</td>
             <td>
@@ -993,12 +1144,22 @@ async function loadAdminTests() {
           const statusCls = !t.active ? 'hidden' : status;
           const statusLabel = !t.active ? 'Hidden' : (status === 'live' ? 'Live' : 'Coming Soon');
           const sched = formatDateTime(t.scheduledAt) === '—' ? '' : formatDateTime(t.scheduledAt);
+          const rankingChip = t.showRanking === false
+            ? '<span class="indicator-chip off">Ranking Off</span>'
+            : '<span class="indicator-chip on">Ranking On</span>';
+          const org = t.organiser || {};
+          const organiserChip = (org.show === true && org.name)
+            ? `<span class="indicator-chip org">🎯 ${escapeHtml(org.name)}</span>`
+            : '';
           return `
             <div class="admin-card-item">
               <div class="admin-card-row">
                 <div>
                   <div class="admin-card-name">${escapeHtml(t.name)}</div>
                   ${sched ? `<div class="admin-card-sub">📅 ${sched}</div>` : ''}
+                  <div class="admin-card-sub" style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
+                    ${rankingChip} ${organiserChip}
+                  </div>
                 </div>
                 <span class="mini-status ${statusCls}">${statusLabel}</span>
               </div>
@@ -1033,7 +1194,7 @@ async function loadAdminTests() {
   } catch (err:any) {
     const tbody = $('admin-tests-tbody');
     const cardsEl = $('admin-tests-cards');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</td></tr>`;
     if (cardsEl) cardsEl.innerHTML = `<p style="text-align:center; padding:24px; color:var(--red);">${escapeHtml(err.message)}</p>`;
   }
 }
@@ -1045,6 +1206,12 @@ function newTestForm() {
   ($('tf-duration') as HTMLInputElement).value = '3600';
   ($('tf-status') as HTMLSelectElement).value = 'live';
   ($('tf-scheduled') as HTMLInputElement).value = '';
+  // New fields — defaults: ranking ON, organiser OFF
+  ($('tf-show-ranking') as HTMLInputElement).checked = true;
+  ($('tf-show-organiser') as HTMLInputElement).checked = false;
+  ($('tf-organiser-name') as HTMLInputElement).value = '';
+  ($('tf-organiser-logo') as HTMLInputElement).value = '';
+  ($('tf-organiser-tagline') as HTMLInputElement).value = '';
   ($('admin-test-form-title') as HTMLElement).textContent = 'Create New Test';
   $('admin-test-form-card')?.classList.remove('hidden');
 }
@@ -1063,6 +1230,13 @@ async function editTest(id: string) {
   } else {
     ($('tf-scheduled') as HTMLInputElement).value = '';
   }
+  // New fields
+  ($('tf-show-ranking') as HTMLInputElement).checked = t.showRanking !== false;
+  const org = t.organiser || {};
+  ($('tf-show-organiser') as HTMLInputElement).checked = org.show === true;
+  ($('tf-organiser-name') as HTMLInputElement).value = org.name || '';
+  ($('tf-organiser-logo') as HTMLInputElement).value = org.logoUrl || '';
+  ($('tf-organiser-tagline') as HTMLInputElement).value = org.tagline || '';
   ($('admin-test-form-title') as HTMLElement).textContent = `Edit: ${t.name}`;
   $('admin-test-form-card')?.classList.remove('hidden');
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1075,9 +1249,27 @@ async function saveTest() {
   const scheduled = ($('tf-scheduled') as HTMLInputElement).value;
   if (!name) { alert('Test name is required.'); return; }
   if (!durationSec || durationSec < 60) { alert('Duration must be at least 60 seconds.'); return; }
+  const showRanking = ($('tf-show-ranking') as HTMLInputElement).checked;
+  const showOrganiser = ($('tf-show-organiser') as HTMLInputElement).checked;
+  const organiserName = ($('tf-organiser-name') as HTMLInputElement).value.trim();
+  const organiserLogo = ($('tf-organiser-logo') as HTMLInputElement).value.trim();
+  const organiserTagline = ($('tf-organiser-tagline') as HTMLInputElement).value.trim();
+  // If admin toggled organiser ON but didn't supply a name, warn — the
+  // banner would be empty otherwise.
+  if (showOrganiser && !organiserName) {
+    alert('You enabled "Show test organiser info" but did not enter an Organiser Name. Please enter one or uncheck the option.');
+    return;
+  }
   const body: any = {
     name, durationSec, status,
-    scheduledAt: scheduled ? new Date(scheduled).toISOString() : null
+    scheduledAt: scheduled ? new Date(scheduled).toISOString() : null,
+    showRanking,
+    organiser: {
+      name: organiserName,
+      logoUrl: organiserLogo,
+      tagline: organiserTagline,
+      show: showOrganiser
+    }
   };
   try {
     if (editingTestId) {
