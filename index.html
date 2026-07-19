@@ -166,6 +166,27 @@
           <div id="test-detail-card" class="card card-elevated"></div>
         </div>
       </div>
+      <!-- Organiser acknowledgement modal — shown when student clicks
+           "Start Test" on a test that has organiser.show = true. -->
+      <div id="organiser-modal" class="modal-backdrop hidden">
+        <div class="modal organiser-modal">
+          <div class="organiser-modal-head">
+            <div id="organiser-modal-logo" class="organiser-modal-logo"></div>
+            <div>
+              <div class="organiser-modal-eyebrow">This test is conducted by</div>
+              <h3 id="organiser-modal-name">—</h3>
+              <p id="organiser-modal-tagline" class="organiser-modal-tagline"></p>
+            </div>
+          </div>
+          <p id="organiser-modal-body" class="organiser-modal-body">
+            By proceeding, you acknowledge that this test is being organised by the partner shown above in collaboration with PrepGate.
+          </p>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" id="organiser-modal-cancel">Cancel</button>
+            <button class="btn btn-gold" id="organiser-modal-okay">Okay, Start Test →</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ========== VIEW 4: EXAM ENGINE (MCQ) ========== -->
@@ -538,6 +559,43 @@
                   <input id="tf-scheduled" class="form-input" type="datetime-local" />
                 </div>
               </div>
+
+              <!-- Ranking visibility -->
+              <div class="form-checkbox-row">
+                <label class="form-checkbox">
+                  <input type="checkbox" id="tf-show-ranking" checked />
+                  <span class="form-checkbox-text">
+                    <strong>Show ranking to students</strong>
+                    <small>When OFF, students cannot view the per-test ranking page. Admin can always download rankings as CSV. Useful for private diagnostic tests.</small>
+                  </span>
+                </label>
+              </div>
+
+              <!-- Organiser branding -->
+              <div class="organiser-block">
+                <label class="form-checkbox">
+                  <input type="checkbox" id="tf-show-organiser" />
+                  <span class="form-checkbox-text">
+                    <strong>Show test organiser info</strong>
+                    <small>Display the institution/team conducting this test on the test detail page. Leave unchecked for tests PrepGate runs itself.</small>
+                  </span>
+                </label>
+                <div class="grid-2 mt-12">
+                  <div class="form-group">
+                    <label class="form-label">Organiser Name</label>
+                    <input id="tf-organiser-name" class="form-input" placeholder="e.g. EAN Team" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Organiser Logo URL (optional)</label>
+                    <input id="tf-organiser-logo" class="form-input" placeholder="https://…/logo.png" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Tagline (optional)</label>
+                  <input id="tf-organiser-tagline" class="form-input" placeholder="e.g. In collaboration with PrepGate" />
+                </div>
+              </div>
+
               <div class="row mt-16">
                 <button class="btn btn-primary" id="admin-test-save">Save Test</button>
                 <button class="btn btn-ghost" id="admin-test-cancel">Cancel</button>
@@ -551,6 +609,8 @@
                     <tr>
                       <th>Name</th>
                       <th>Status</th>
+                      <th>Ranking</th>
+                      <th>Organiser</th>
                       <th>Duration</th>
                       <th>Questions</th>
                       <th>Actions</th>

@@ -1671,3 +1671,218 @@ a:hover { text-decoration: underline; }
 @media (max-width: 400px) {
   .perm-grid { grid-template-columns: 1fr; }
 }
+
+/* =========================================
+   21. FORM CHECKBOX ROW (ranking + organiser toggles)
+   ========================================= */
+.form-checkbox-row {
+  margin-top: 16px;
+  margin-bottom: 4px;
+}
+.form-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--blue-light);
+  border: 1px solid var(--blue-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.form-checkbox:hover { background: #E5EEF8; }
+.form-checkbox input[type="checkbox"] {
+  margin-top: 2px;
+  width: 18px; height: 18px;
+  accent-color: var(--blue-deep);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.form-checkbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+  color: var(--text-darkest);
+  line-height: 1.4;
+}
+.form-checkbox-text strong {
+  font-family: var(--font-display);
+  color: var(--blue-deep);
+  font-weight: 700;
+}
+.form-checkbox-text small {
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.organiser-block {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px dashed var(--blue-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.5);
+}
+.organiser-block .grid-2 { margin-top: 12px; }
+
+/* =========================================
+   22. ORGANISER BANNER (test detail page)
+   ========================================= */
+.organiser-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin: 16px 0 8px;
+  background: linear-gradient(135deg, #FFF8E7 0%, #FFFAF0 100%);
+  border: 1px solid #F0D88A;
+  border-left: 4px solid var(--gold);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 2px rgba(0, 17, 33, 0.04);
+}
+.organiser-banner-logo {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: var(--white);
+  border: 2px solid var(--gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--blue-deep);
+  overflow: hidden;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+}
+.organiser-banner-logo img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.organiser-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.organiser-banner-eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-mid);
+}
+.organiser-banner-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--blue-deep);
+  line-height: 1.2;
+}
+.organiser-banner-tagline {
+  font-size: 12px;
+  color: var(--text-mid);
+  line-height: 1.3;
+}
+
+/* =========================================
+   23. ORGANISER MODAL (start-test popup)
+   ========================================= */
+.organiser-modal {
+  max-width: 520px;
+  padding: 28px;
+}
+.organiser-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--blue-border);
+}
+.organiser-modal-logo {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), #F4C06F);
+  border: 3px solid var(--white);
+  box-shadow: 0 2px 8px rgba(0, 17, 33, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 24px;
+  color: var(--blue-darkest);
+  overflow: hidden;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+}
+.organiser-modal-logo img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.organiser-modal-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-mid);
+  margin-bottom: 2px;
+}
+.organiser-modal h3 {
+  margin: 0 0 4px 0;
+  font-size: 22px;
+  color: var(--blue-deep);
+}
+.organiser-modal-tagline {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-mid);
+}
+.organiser-modal-body {
+  font-size: 14px;
+  color: var(--text-mid);
+  line-height: 1.55;
+  margin-bottom: 22px;
+}
+
+/* =========================================
+   24. ADMIN TABLE — mini indicator chips
+   ========================================= */
+.indicator-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.indicator-chip.on {
+  background: rgba(34, 197, 94, 0.12);
+  color: #166534;
+}
+.indicator-chip.off {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+}
+.indicator-chip.org {
+  background: rgba(255, 209, 102, 0.18);
+  color: #92660C;
+}
+
+/* Mobile: stack organiser-block grids + shrink modal logo */
+@media (max-width: 640px) {
+  .organiser-block .grid-2 { grid-template-columns: 1fr; }
+  .organiser-modal { padding: 22px; }
+  .organiser-modal-head { gap: 12px; }
+  .organiser-modal-logo { width: 52px; height: 52px; font-size: 20px; }
+  .organiser-modal h3 { font-size: 18px; }
+  .organiser-banner { padding: 12px; gap: 10px; }
+  .organiser-banner-logo { width: 38px; height: 38px; font-size: 15px; }
+  .organiser-banner-name { font-size: 14px; }
+}
