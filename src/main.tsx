@@ -289,12 +289,24 @@ async function loadDashboard() {
       { label: 'Best Score', value: `${Math.round(bestScore)}%` },
       { label: 'Average Score', value: `${Math.round(avgPct)}%` }
     ]);
+    renderChart([
+      { label: 'Tests Attempted', value: String(testsCount), pct: Math.min(testsCount / 20 * 100, 100) },
+      { label: 'Total Submissions', value: String(attempts.length), pct: Math.min(attempts.length / 30 * 100, 100) },
+      { label: 'Best Score', value: `${Math.round(bestScore)}%`, pct: bestScore },
+      { label: 'Average Score', value: `${Math.round(avgPct)}%`, pct: avgPct }
+    ]);
   } catch {
     renderStats('dash-stats', [
       { label: 'Tests Attempted', value: '0' },
       { label: 'Total Submissions', value: '0' },
       { label: 'Best Score', value: '—' },
       { label: 'Average Score', value: '—' }
+    ]);
+    renderChart([
+      { label: 'Tests Attempted', value: '0', pct: 0 },
+      { label: 'Total Submissions', value: '0', pct: 0 },
+      { label: 'Best Score', value: '—', pct: 0 },
+      { label: 'Average Score', value: '—', pct: 0 }
     ]);
   }
 }
@@ -308,6 +320,39 @@ function renderStats(containerId: string, stats: {label: string, value: string}[
       <div class="stat-value">${escapeHtml(s.value)}</div>
     </div>
   `).join('');
+}
+
+function renderChart(stats: {label: string, value: string, pct: number}[]) {
+  const c = $('dash-chart');
+  if (!c) return;
+  const maxVal = Math.max(...stats.map(s => s.pct), 1);
+  c.innerHTML = `
+    <div class="chart-bars">
+      ${stats.map(s => {
+        const h = Math.max(Math.round((s.pct / maxVal) * 100), 4);
+        return `
+        <div class="chart-bar-wrap">
+          <div class="chart-bar-value">${escapeHtml(s.value)}</div>
+          <div class="chart-bar-track">
+            <div class="chart-bar-fill" data-height="${h}" style="height:0%"></div>
+          </div>
+          <div class="chart-bar-label">${escapeHtml(s.label)}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+  // Trigger animation on next frame
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const bars = c.querySelector('.chart-bars');
+      if (!bars) return;
+      bars.classList.add('animate');
+      bars.querySelectorAll('.chart-bar-fill').forEach((bar, i) => {
+        const target = bar.getAttribute('data-height') || '0';
+        setTimeout(() => { bar.style.height = target + '%'; }, i * 120);
+      });
+    });
+  });
 }
 
 // ==========================================
