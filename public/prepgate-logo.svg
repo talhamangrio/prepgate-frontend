@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Navy blue circle -->
+  <circle cx="100" cy="100" r="98" fill="#1e3a8a" stroke="#1e3a8a" stroke-width="2"/>
+  <!-- White arch/doorway shape -->
+  <path d="M 60 140 L 60 75 A 40 40 0 0 1 140 75 L 140 140 Z" fill="white"/>
+  <!-- Orange/gold accent dot -->
+  <circle cx="100" cy="120" r="8" fill="#f59e0b"/>
+</svg>

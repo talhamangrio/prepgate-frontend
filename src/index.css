@@ -148,16 +148,15 @@ a:hover { text-decoration: underline; }
 .brand-mark {
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--blue-deep), var(--blue-mid));
+  border-radius: 50%;
+  background: url('/prepgate-logo.svg') center/contain no-repeat;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--gold);
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 16px;
   box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  color: transparent;
+  font-size: 0;
 }
 .brand-text {
   display: flex;
@@ -195,7 +194,7 @@ a:hover { text-decoration: underline; }
 @media (max-width: 640px) {
   .brand-tag { display: none; }
   .brand-name { font-size: 14px; }
-  .brand-mark { width: 32px; height: 32px; font-size: 13px; border-radius: var(--radius-sm); }
+  .brand-mark { width: 32px; height: 32px; border-radius: 50%; }
   .topnav-brand { gap: 8px; }
   .topnav-actions { gap: 2px; flex: 1; justify-content: flex-end; }
   .nav-btn { padding: 6px 8px; font-size: 12px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
@@ -324,7 +323,7 @@ a:hover { text-decoration: underline; }
 @media (max-width: 640px) {
   .auth-card { padding: 28px 22px; border-radius: var(--radius-lg); }
   .auth-screen { padding: 16px; }
-  .auth-brand .brand-mark { width: 48px; height: 48px; font-size: 18px; margin-bottom: 10px; }
+  .auth-brand .brand-mark { width: 48px; height: 48px; margin-bottom: 10px; }
   .auth-brand h1 { font-size: 22px; }
   .auth-brand p { font-size: 12px; }
 }
@@ -334,7 +333,7 @@ a:hover { text-decoration: underline; }
   align-items: center;
   margin-bottom: 28px;
 }
-.auth-brand .brand-mark { width: 56px; height: 56px; font-size: 22px; border-radius: var(--radius-md); margin-bottom: 12px; }
+.auth-brand .brand-mark { width: 56px; height: 56px; border-radius: 50%; margin-bottom: 12px; }
 .auth-brand h1 { font-size: 24px; font-weight: 700; color: var(--blue-deep); }
 .auth-brand p { font-size: 13px; color: var(--text-light); margin-top: 4px; }
 
@@ -1104,7 +1103,7 @@ a:hover { text-decoration: underline; }
   height: 100vh;
   overflow-y: auto;
 }
-.admin-sidebar .brand-mark { margin-bottom: 24px; }
+.admin-sidebar .brand-mark { margin-bottom: 24px; border-radius: 50%; }
 .admin-nav-item {
   display: flex;
   align-items: center;
