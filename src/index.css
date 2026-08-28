@@ -500,20 +500,7 @@ a:hover { text-decoration: underline; }
   padding: 18px 20px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
-  position: relative;
-  overflow: hidden;
 }
-.stat-card::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-}
-.stat-card:nth-child(1)::before { background: var(--blue-mid); }
-.stat-card:nth-child(2)::before { background: var(--gold); }
-.stat-card:nth-child(3)::before { background: #10b981; }
-.stat-card:nth-child(4)::before { background: #8b5cf6; }
 .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
