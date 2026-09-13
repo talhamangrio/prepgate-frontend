@@ -21,6 +21,7 @@ let examStartedAt: string | null = null;
 let lastResult: any = null;
 let lastRankingTestId: string | null = null;
 let allTests: any[] = [];
+let adminTests: any[] = [];
 let authMode: 'login' | 'register' = 'login';
 let countdownTimer: any = null;
 
@@ -1147,6 +1148,7 @@ async function loadAdminDashboard() {
 async function loadAdminTests() {
   try {
     const tests = await api('/api/admin/tests');
+    adminTests = tests || [];
     const tbody = $('admin-tests-tbody');
     const cardsEl = $('admin-tests-cards');
     if (!tests.length) {
@@ -1335,7 +1337,7 @@ async function saveTest() {
 }
 
 async function toggleTestActive(id: string) {
-  const t = allTests.find(x => x._id === id);
+  const t = adminTests.find(x => x._id === id) || allTests.find(x => x._id === id);
   try {
     await api(`/api/admin/tests/${id}`, {
       method: 'PATCH',
