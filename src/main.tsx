@@ -118,6 +118,30 @@ async function api(path: string, opts: RequestInit = {}): Promise<any> {
   const token = getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${API}${path}`, { ...opts, headers });
+
+  // ── 401 handler: token expired / invalid ──
+  // If the backend rejects our JWT, the session is dead. Clear stored
+  // credentials and redirect to the login screen with a friendly message
+  // instead of letting every caller crash with "Invalid token".
+  if (res.status === 401) {
+    // Only force-logout if we actually sent a token (public endpoints
+    // that return 401 for other reasons shouldn't trigger this).
+    if (token) {
+      setToken(null);
+      setUser(null);
+      showView('view-0');
+      // Show a toast-like alert so the user knows what happened
+      const errEl = $('auth-error');
+      if (errEl) {
+        errEl.textContent = 'Your session has expired. Please log in again.';
+        errEl.classList.remove('hidden');
+      }
+    }
+    const err: any = new Error('Session expired — please log in again.');
+    err.status = 401;
+    throw err;
+  }
+
   const ct = res.headers.get('content-type') || '';
   if (ct.includes('application/json')) {
     const data = await res.json();
@@ -701,8 +725,12 @@ async function startExam(resume = false) {
     startExamTimer();
     startAutoSave();
   } catch (err: any) {
-    alert('Failed to load questions: ' + err.message);
-    showView('view-3');
+    // If it's a 401, the api() helper already cleared the token and
+    // redirected to login — no need for another alert.
+    if (err.status !== 401) {
+      alert('Failed to load questions: ' + err.message);
+      showView('view-3');
+    }
   }
 }
 
@@ -845,6 +873,8 @@ async function submitExam(auto = false) {
     renderResult();
     // submitting stays true — we're done, the exam view is gone.
   } catch (err: any) {
+    // If 401, api() already handled logout — don't double-alert
+    if (err.status === 401) return;
     // Re-enable on error so the user can retry
     submitting = false;
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '✓ Submit Test'; }
@@ -1959,24 +1989,47 @@ function wireEvents() {
 // ==========================================
 // INIT
 // ==========================================
-function init() {
+async function init() {
   wireEvents();
   startCountdownTicker();
   const stored = getStoredUser();
   const token = getToken();
   if (stored && token) {
-    currentUser = stored;
-    if (stored.isAdmin) {
-      showView('view-9');
-      refreshAdminNavVisibility();
-      switchAdminTab('dashboard');
-    } else if (stored.isModerator) {
-      showView('view-9');
-      refreshAdminNavVisibility();
-      switchAdminTab(firstPermittedTab(stored.permissions));
-    } else {
-      showView('view-1');
-      loadDashboard();
+    // ── Validate the stored token before trusting it ──
+    // If the JWT has expired or the backend's secret changed,
+    // the first authenticated call will trigger our 401 handler
+    // which clears credentials and shows login. We proactively
+    // check here so the user doesn't see a broken dashboard flash.
+    let tokenValid = true;
+    try {
+      if (stored.isAdmin || stored.isModerator) {
+        // Admin/moderator — ping an admin endpoint
+        await api('/api/admin/stats');
+      } else {
+        // Student — ping profile
+        await api('/api/exam/profile');
+      }
+    } catch (err: any) {
+      if (err.status === 401) {
+        tokenValid = false;
+        // 401 handler in api() already cleared token + redirected
+      }
+    }
+
+    if (tokenValid) {
+      currentUser = stored;
+      if (stored.isAdmin) {
+        showView('view-9');
+        refreshAdminNavVisibility();
+        switchAdminTab('dashboard');
+      } else if (stored.isModerator) {
+        showView('view-9');
+        refreshAdminNavVisibility();
+        switchAdminTab(firstPermittedTab(stored.permissions));
+      } else {
+        showView('view-1');
+        loadDashboard();
+      }
     }
   } else {
     setAuthMode('login');
