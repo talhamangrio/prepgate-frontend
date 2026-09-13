@@ -1150,13 +1150,16 @@ async function loadAdminTests() {
     const tbody = $('admin-tests-tbody');
     const cardsEl = $('admin-tests-cards');
     if (!tests.length) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</td></tr>';
       if (cardsEl) cardsEl.innerHTML = '<p style="text-align:center; padding:24px; color:var(--text-light);">No tests yet. Click "+ New Test" to create one.</p>';
     } else {
       const rows = tests.map((t:any) => {
         const status = t.status || 'live';
         const statusCls = !t.active ? 'hidden' : status;
         const statusLabel = !t.active ? 'Hidden' : (status === 'live' ? 'Live' : 'Coming Soon');
+        const visibilityChip = t.active
+          ? '<span class="indicator-chip on">Visible</span>'
+          : '<span class="indicator-chip off">Hidden</span>';
         const sched = formatDateTime(t.scheduledAt) === '—' ? '' : '📅 ' + formatDateTime(t.scheduledAt);
         // Ranking + organiser indicators
         const rankingChip = t.showRanking === false
@@ -1169,6 +1172,7 @@ async function loadAdminTests() {
         return `
           <tr>
             <td><strong>${escapeHtml(t.name)}</strong><br><span class="text-mut text-sm">${sched}</span></td>
+            <td>${visibilityChip}</td>
             <td><span class="mini-status ${statusCls}">${statusLabel}</span></td>
             <td>${rankingChip}</td>
             <td>${organiserChip}</td>
@@ -1309,6 +1313,7 @@ async function saveTest() {
     name, durationSec, status,
     scheduledAt: scheduled ? new Date(scheduled).toISOString() : null,
     showRanking,
+    active: true,
     organiser: {
       name: organiserName,
       logoUrl: organiserLogo,
